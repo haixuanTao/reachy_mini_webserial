@@ -4,8 +4,7 @@ use js_sys::Promise;
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{console, window, ReadableStreamDefaultReader, WritableStreamDefaultWriter};
-use web_sys::{SerialOptions, SerialPort};
+use web_sys::{console, ReadableStreamDefaultReader, WritableStreamDefaultWriter};
 
 use crate::kinematics::Kinematics;
 // When the `wee_alloc` feature is enabled, this uses `wee_alloc` as the global
@@ -129,11 +128,8 @@ pub async fn test3() {
         25
     };
     // Test inverse kinematics
-    let navigator = window().unwrap().navigator();
-
     let window = web_sys::window().expect("no global `window` exists");
     let document = window.document().expect("should have a document on window");
-    let body = document.body().expect("document should have a body");
 
     let port_js = requestSerialPort()
         .await
@@ -212,7 +208,7 @@ pub async fn test3() {
                         break;
                     }
                 }
-                let mut t = kinematics.forward_kinematics(results.clone(), None);
+                let t = kinematics.forward_kinematics(results.clone(), None);
 
                 // remove head_z_offset
                 let x = -t[(0, 3)] * 1000.; // Reverse X axis because don't know
@@ -258,10 +254,6 @@ struct Motor {
     solution: f64,
 }
 static MOTOR_JSON: [u8; include_bytes!("motors.json").len()] = *include_bytes!("motors.json");
-
-const HEAD_Z_OFFSET: f64 = 0.177;
-const MOTOR_ARM_LENGTH: f64 = 0.04;
-const ROD_LENGTH: f64 = 0.085;
 
 // Dynamixel Protocol 2.0 packets
 const SYNC_READ_POSITION: [u8; 20] = [
