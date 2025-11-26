@@ -37,14 +37,6 @@ jobs:
       - name: Build WASM
         run: npm run build
 
-      - name: Prepare deployment
-        run: |
-          mkdir -p dist
-          cp index.html dist/
-          cp -r pkg dist/
-          [ -f index.js ] && cp index.js dist/ || true
-          [ -f style.css ] && cp style.css dist/ || true
-
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
