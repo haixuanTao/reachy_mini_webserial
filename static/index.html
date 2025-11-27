@@ -495,6 +495,14 @@
                         <div class="motor-id">Motor 6</div>
                         <span class="motor-value" id="motor-6">--</span><span class="motor-unit">°</span>
                     </div>
+                    <div class="motor-card">
+                        <div class="motor-id">Motor 21</div>
+                        <span class="motor-value" id="motor-21">--</span><span class="motor-unit">°</span>
+                    </div>
+                    <div class="motor-card">
+                        <div class="motor-id">Motor 22</div>
+                        <span class="motor-value" id="motor-22">--</span><span class="motor-unit">°</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -506,12 +514,23 @@
             </div>
             <div class="card-body">
                 <div class="controls-grid">
-                    <button class="btn btn-primary" id="btn-fk" >
-                        Connect forward kinematics
+                    <button class="btn btn-primary" id="btn-connect" >
+                        Connect
                     </button>
-
-                    <button class="btn btn-primary" id="btn-joint-only" >
-                        Connect joint only
+                    <button class="btn btn-secondary" id="btn-fk" disabled>
+                        Full Position 
+                    </button>
+                    <button class="btn btn-secondary" id="btn-torque-on" disabled>
+                        Torque on
+                    </button>
+                    <button class="btn btn-secondary" id="btn-torque-off" disabled>
+                        Torque off
+                    </button>
+                    <button class="btn btn-secondary" id="btn-record" disabled>
+                        Record
+                    </button>
+                    <button class="btn btn-secondary" id="btn-replay" disabled>
+                        Replay
                     </button>
                 </div>
             </div>

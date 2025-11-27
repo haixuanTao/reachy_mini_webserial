@@ -1,25 +1,25 @@
 use nalgebra::{DVector, Matrix3, Matrix3x6, Matrix4, MatrixXx6, Vector3};
 
-const HEAD_Z_OFFSET: f64 = 0.177;
+const HEAD_Z_OFFSET: f32 = 0.177;
 
 struct Branch {
-    branch_platform: Vector3<f64>,
-    t_world_motor: Matrix4<f64>,
-    solution: f64,
-    jacobian: Matrix3x6<f64>,
+    branch_platform: Vector3<f32>,
+    t_world_motor: Matrix4<f32>,
+    solution: f32,
+    jacobian: Matrix3x6<f32>,
 }
 
 pub struct Kinematics {
-    motor_arm_length: f64,
-    rod_length: f64,
-    t_world_platform: Matrix4<f64>,
+    motor_arm_length: f32,
+    rod_length: f32,
+    t_world_platform: Matrix4<f32>,
     line_search_maximum_iterations: usize,
     branches: Vec<Branch>,
-    body_yaw: f64,
+    body_yaw: f32,
 }
 
 impl Kinematics {
-    pub fn new(motor_arm_length: f64, rod_length: f64) -> Self {
+    pub fn new(motor_arm_length: f32, rod_length: f32) -> Self {
         let t_world_platform = Matrix4::identity();
         let line_search_maximum_iterations = 16;
 
@@ -36,16 +36,16 @@ impl Kinematics {
 
     pub fn add_branch(
         &mut self,
-        branch_platform: Vector3<f64>,
-        t_world_motor: Matrix4<f64>,
-        solution: f64,
+        branch_platform: Vector3<f32>,
+        t_world_motor: Matrix4<f32>,
+        solution: f32,
     ) {
         // Building a 3x6 jacobian relating platform velocity to branch anchor point
         // linear velocity Linear velocity is kept as identity and angular velocity is
         // using Varignon's formula w x p, which Is anti-symmetric -p x w and used in
         // matrix form [-p]
 
-        let mut jacobian: Matrix3x6<f64> = Matrix3x6::zeros();
+        let mut jacobian: Matrix3x6<f32> = Matrix3x6::zeros();
         let mut slice = jacobian.view_mut((0, 0), (3, 3));
         slice += Matrix3::identity();
         let p = -branch_platform;
@@ -65,20 +65,20 @@ impl Kinematics {
         });
     }
 
-    fn wrap_angle(angle: f64) -> f64 {
+    fn wrap_angle(angle: f32) -> f32 {
         angle
-            - (2.0 * std::f64::consts::PI)
-                * ((angle + std::f64::consts::PI) * (1.0 / (2.0 * std::f64::consts::PI))).floor()
+            - (2.0 * std::f32::consts::PI)
+                * ((angle + std::f32::consts::PI) * (1.0 / (2.0 * std::f32::consts::PI))).floor()
     }
 
     pub fn inverse_kinematics_safe(
         &mut self,
-        t_world_platform: Matrix4<f64>,
-        body_yaw: Option<f64>,
-        max_relative_yaw: Option<f64>,
-        max_body_yaw: Option<f64>,
-    ) -> Vec<f64> {
-        let mut joint_angles: Vec<f64> = vec![0.0; self.branches.len() + 1];
+        t_world_platform: Matrix4<f32>,
+        body_yaw: Option<f32>,
+        max_relative_yaw: Option<f32>,
+        max_body_yaw: Option<f32>,
+    ) -> Vec<f32> {
+        let mut joint_angles: Vec<f32> = vec![0.0; self.branches.len() + 1];
         let mut body_yaw_target = 0.0;
         // if body yaw is specified, rotate the platform accordingly
         if body_yaw.is_some() {
@@ -109,10 +109,10 @@ impl Kinematics {
     #[allow(non_snake_case)]
     pub fn inverse_kinematics(
         &mut self,
-        t_world_platform: Matrix4<f64>,
-        body_yaw: Option<f64>,
-    ) -> Vec<f64> {
-        let mut joint_angles: Vec<f64> = vec![0.0; self.branches.len()];
+        t_world_platform: Matrix4<f32>,
+        body_yaw: Option<f32>,
+    ) -> Vec<f32> {
+        let mut joint_angles: Vec<f32> = vec![0.0; self.branches.len()];
         let rs = self.motor_arm_length;
         let rp = self.rod_length;
 
@@ -180,23 +180,23 @@ impl Kinematics {
         joint_angles
     }
 
-    pub fn reset_forward_kinematics(&mut self, t_world_platform: Matrix4<f64>) {
+    pub fn reset_forward_kinematics(&mut self, t_world_platform: Matrix4<f32>) {
         self.t_world_platform = t_world_platform;
     }
 
     #[allow(non_snake_case)]
     pub fn forward_kinematics(
         &mut self,
-        joint_angles: Vec<f64>,
-        body_yaw: Option<f64>,
-    ) -> Matrix4<f64> {
+        joint_angles: Vec<f32>,
+        body_yaw: Option<f32>,
+    ) -> Matrix4<f32> {
         if self.branches.len() != 6 {
             panic!("Forward kinematics requires exactly 6 joint angles");
         }
 
-        let mut J = MatrixXx6::<f64>::zeros(6);
-        let mut errors = DVector::<f64>::zeros(6);
-        let mut arms_motor: Vec<Vector3<f64>> = Vec::new();
+        let mut J = MatrixXx6::<f32>::zeros(6);
+        let mut errors = DVector::<f32>::zeros(6);
+        let mut arms_motor: Vec<Vector3<f32>> = Vec::new();
 
         for k in 0..self.branches.len() {
             let branch = &self.branches[k];
@@ -217,7 +217,7 @@ impl Kinematics {
             let current_distance = (arm_platform - branch.branch_platform).norm();
 
             // Computing the arm-to-branch vector in platform frame
-            let arm_branch_platform: Vector3<f64> = branch.branch_platform - arm_platform;
+            let arm_branch_platform: Vector3<f32> = branch.branch_platform - arm_platform;
 
             // Computing the jacobian of the distance
             let mut slice = J.view_mut((k, 0), (1, 6));
@@ -229,7 +229,7 @@ impl Kinematics {
         if errors.norm() > 1e-6 {
             let mut V = J.pseudo_inverse(1e-6).unwrap() * errors.clone();
             for _i in 0..self.line_search_maximum_iterations {
-                let mut T: Matrix4<f64> = Matrix4::identity();
+                let mut T: Matrix4<f32> = Matrix4::identity();
                 T[(0, 3)] = V[0];
                 T[(1, 3)] = V[1];
                 T[(2, 3)] = V[2];
@@ -245,7 +245,7 @@ impl Kinematics {
                 }
                 let t_world_platform2 = self.t_world_platform * T;
 
-                let mut new_errors = DVector::<f64>::zeros(self.branches.len());
+                let mut new_errors = DVector::<f32>::zeros(self.branches.len());
                 for k in 0..self.branches.len() {
                     let branch = &self.branches[k];
 
@@ -303,9 +303,9 @@ mod tests {
     #[allow(non_snake_case)]
     #[derive(Deserialize)]
     struct Motor {
-        branch_position: Vec<f64>,
-        T_motor_world: Vec<Vec<f64>>,
-        solution: f64,
+        branch_position: Vec<f32>,
+        T_motor_world: Vec<Vec<f32>>,
+        solution: f32,
     }
 
     fn initialize_kinematics() -> Kinematics {
@@ -405,7 +405,7 @@ mod tests {
                 1.0,
             ],
         ];
-        let expected_flat: Vec<f64> = expected_res
+        let expected_flat: Vec<f32> = expected_res
             .iter()
             .flat_map(|row| row.iter())
             .copied()

@@ -1,12 +1,24 @@
+mod dynamixel;
 mod kinematics;
+use std::cell::RefCell;
+
 use futures_util::StreamExt;
-use js_sys::Promise;
+use js_sys::{Boolean, Promise};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{console, ReadableStreamDefaultReader, WritableStreamDefaultWriter};
 
+use crate::dynamixel::{
+    build_sync_write_position_radians, build_sync_write_torque, parse_status_packet,
+    SYNC_READ_POSITION,
+};
 use crate::kinematics::Kinematics;
+
+thread_local! {
+    static PLAYBACK_FRAMES: RefCell<Vec<Vec<f32>>> = RefCell::new(Vec::new());
+}
+
 // When the `wee_alloc` feature is enabled, this uses `wee_alloc` as the global
 // allocator.
 //
@@ -45,6 +57,15 @@ extern "C" {
     // Import the JS function we created
     #[wasm_bindgen(js_namespace = window, catch)]
     async fn requestSerialPort() -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(js_name = getCachedPort)]
+    fn get_cached_port() -> JsValue;
+
+    #[wasm_bindgen(js_name = closeSerialPort)]
+    async fn close_serial_port();
+
+    #[wasm_bindgen(js_name = isOpen)]
+    async fn is_open() -> Boolean;
 }
 /// Generic serial port wrapper that works with both native WebSerial and polyfill
 pub struct GenericSerialPort {
@@ -79,7 +100,7 @@ impl GenericSerialPort {
 }
 
 #[wasm_bindgen]
-pub async fn fk() {
+pub async fn fk(duration: Option<f64>) {
     let data = String::from_utf8(MOTOR_JSON.to_vec()).unwrap();
     let motors: Vec<Motor> = serde_json::from_str(&data).expect("JSON was not well-formatted");
     let mut kinematics = Kinematics::new(0.038, 0.09);
@@ -116,31 +137,14 @@ pub async fn fk() {
         );
     }
 
-    let wait_time = if web_sys::window()
-        .unwrap()
-        .navigator()
-        .user_agent()
-        .unwrap()
-        .to_lowercase()
-        .contains("android")
-    {
-        100
-    } else {
-        25
-    };
+    let wait_time = 10;
     // Test inverse kinematics
     let window = web_sys::window().expect("no global `window` exists");
     let document = window.document().expect("should have a document on window");
 
-    let port_js = requestSerialPort()
-        .await
-        .expect("Failed to get serial port");
+    let port_js = get_cached_port();
 
     let port = GenericSerialPort::new(port_js);
-
-    // Open with baud rate
-    port.open(1_000_000).await.expect("Failed to open port");
-    web_sys::console::log_1(&format!("port").into());
 
     // Now you can read/write
     // Get the readable stream
@@ -148,9 +152,8 @@ pub async fn fk() {
     let writable = port.writable().unwrap();
     let reader: ReadableStreamDefaultReader = readable.get_reader().dyn_into().unwrap();
     let writer: WritableStreamDefaultWriter = writable.get_writer().unwrap().dyn_into().unwrap();
-    web_sys::console::log_1(&reader);
     // Read data in a loop
-    let motors = vec![1, 2, 3, 4, 5, 6]
+    let motors = vec![1, 2, 3, 4, 5, 6, 21, 22]
         .iter()
         .map(|i| document.get_element_by_id(&format!("motor-{i}")).unwrap())
         .collect::<Vec<_>>();
@@ -160,9 +163,16 @@ pub async fn fk() {
     let pose_roll = document.get_element_by_id("pose-roll").unwrap();
     let pose_pitch = document.get_element_by_id("pose-pitch").unwrap();
     let pose_yaw = document.get_element_by_id("pose-yaw").unwrap();
-    web_sys::console::log_1(&"ok".into());
-
-    let mut results = vec![0.0; 6];
+    let btn_torque_on = document.get_element_by_id("btn-torque-on").unwrap();
+    let btn_torque_off = document.get_element_by_id("btn-torque-off").unwrap();
+    let btn_record = document.get_element_by_id("btn-record").unwrap();
+    let btn_replay = document.get_element_by_id("btn-replay").unwrap();
+    btn_torque_off.set_attribute("disabled", "true").unwrap();
+    btn_torque_on.set_attribute("disabled", "true").unwrap();
+    btn_record.set_attribute("disabled", "true").unwrap();
+    btn_replay.set_attribute("disabled", "true").unwrap();
+    let mut results = vec![0.0; 8];
+    let start_time = js_sys::Date::now();
     loop {
         // sleep
         JsFuture::from(
@@ -180,8 +190,6 @@ pub async fn fk() {
             }
             Ok(res) => {
                 // Manufacture the element we're gonna append
-
-                // Process the read data here
                 let done = js_sys::Reflect::get(&res, &"done".into())
                     .unwrap()
                     .as_bool()
@@ -190,12 +198,19 @@ pub async fn fk() {
                 let data = js_sys::Uint8Array::from(value);
                 let bytes = data.to_vec();
                 // Parse motor positions
-                for motor_id in 0..6 {
+                for motor_id in 0..8 {
                     if let Some((id, pos)) = parse_status_packet(&bytes, motor_id * 15) {
-                        results[id as usize - 1] = raw_to_radians(pos);
-                        let val = &motors[id as usize - 1];
+                        let id = if id == 21 {
+                            6
+                        } else if id == 22 {
+                            7
+                        } else {
+                            id as usize - 1
+                        };
+                        results[id] = raw_to_radians(pos);
+                        let val = &motors[id];
                         val.set_text_content(Some(
-                            (raw_to_radians(pos) * 360. / (2. * std::f64::consts::PI))
+                            (raw_to_radians(pos) * 360. / (2. * std::f32::consts::PI))
                                 .round()
                                 .to_string()
                                 .as_str(),
@@ -208,6 +223,19 @@ pub async fn fk() {
                     if done {
                         break;
                     }
+                }
+                if let Some(dur) = duration {
+                    let elapsed = js_sys::Date::now() - start_time;
+                    let progress = elapsed / dur;
+                    web_sys::console::log_1(&format!("recording {}", progress).into());
+
+                    if progress >= 1.0 {
+                        web_sys::console::log_1(&format!("Playback finished").into());
+                        break;
+                    }
+                    PLAYBACK_FRAMES.with_borrow_mut(|frames| {
+                        frames.push(results.clone());
+                    })
                 }
                 let t = kinematics.forward_kinematics(results.clone(), None);
 
@@ -246,180 +274,104 @@ pub async fn fk() {
             }
         }
     }
+
+    reader.release_lock();
+    writer.release_lock();
+    btn_torque_off.remove_attribute("disabled").unwrap();
+    btn_torque_on.remove_attribute("disabled").unwrap();
+    btn_record.remove_attribute("disabled").unwrap();
+    btn_replay.remove_attribute("disabled").unwrap();
+    web_sys::console::log_1(&format!("recording {}", 0).into());
 }
 
 #[wasm_bindgen]
-pub async fn joint_only() {
-    let wait_time = if web_sys::window()
-        .unwrap()
-        .navigator()
-        .user_agent()
-        .unwrap()
-        .to_lowercase()
-        .contains("android")
-    {
-        100
-    } else {
-        25
-    };
-    // Test inverse kinematics
-    let window = web_sys::window().expect("no global `window` exists");
-    let document = window.document().expect("should have a document on window");
+pub async fn torque_off() {
+    let port_js = get_cached_port();
 
+    let port = GenericSerialPort::new(port_js);
+
+    // Now you can read/write
+    // Get the readable stream
+    let torque_off = build_sync_write_torque(&[1, 2, 3, 4, 5, 6, 21, 22], false);
+    let writable = port.writable().unwrap();
+    let writer: WritableStreamDefaultWriter = writable.get_writer().unwrap().dyn_into().unwrap();
+
+    // sleep
+    JsFuture::from(writer.write_with_chunk(&js_sys::Uint8Array::from(&torque_off[..]).into()))
+        .await
+        .unwrap();
+    writer.release_lock();
+}
+
+#[wasm_bindgen]
+pub async fn replay() {
+    torque_on().await;
+    let port_js = get_cached_port();
+
+    let port = GenericSerialPort::new(port_js);
+
+    let writable = port.writable().unwrap();
+    let writer: WritableStreamDefaultWriter = writable.get_writer().unwrap().dyn_into().unwrap();
+    let frames = PLAYBACK_FRAMES.with_borrow(|frames| frames.clone());
+    for frame in frames.iter() {
+        let packet = build_sync_write_position_radians(&vec![1, 2, 3, 4, 5, 6, 21, 22], frame);
+        JsFuture::from(writer.write_with_chunk(&js_sys::Uint8Array::from(&packet[..]).into()))
+            .await
+            .unwrap();
+        sleep(20).await;
+    }
+    writer.release_lock();
+    torque_off().await;
+}
+
+#[wasm_bindgen]
+pub async fn connect() {
     let port_js = requestSerialPort()
         .await
         .expect("Failed to get serial port");
 
     let port = GenericSerialPort::new(port_js);
 
-    // Open with baud rate
     port.open(1_000_000).await.expect("Failed to open port");
-    web_sys::console::log_1(&format!("port").into());
+}
+
+#[wasm_bindgen]
+pub async fn torque_on() {
+    let port_js = get_cached_port();
+
+    let port = GenericSerialPort::new(port_js);
 
     // Now you can read/write
     // Get the readable stream
-    let readable = port.readable().unwrap();
-    let writable = port.writable().unwrap();
-    let reader: ReadableStreamDefaultReader = readable.get_reader().dyn_into().unwrap();
-    let writer: WritableStreamDefaultWriter = writable.get_writer().unwrap().dyn_into().unwrap();
-    web_sys::console::log_1(&reader);
-    // Read data in a loop
-    let motors = vec![1, 2, 3, 4, 5, 6]
-        .iter()
-        .map(|i| document.get_element_by_id(&format!("motor-{i}")).unwrap())
-        .collect::<Vec<_>>();
-    let pose_x = document.get_element_by_id("pose-x").unwrap();
-    let pose_y = document.get_element_by_id("pose-y").unwrap();
-    let pose_z = document.get_element_by_id("pose-z").unwrap();
-    let pose_roll = document.get_element_by_id("pose-roll").unwrap();
-    let pose_pitch = document.get_element_by_id("pose-pitch").unwrap();
-    let pose_yaw = document.get_element_by_id("pose-yaw").unwrap();
-    web_sys::console::log_1(&"ok".into());
+    let torque_on = build_sync_write_torque(&[1, 2, 3, 4, 5, 6, 21, 22], true);
 
-    let mut results = vec![0.0; 6];
-    loop {
-        // sleep
-        JsFuture::from(
-            writer.write_with_chunk(&js_sys::Uint8Array::from(&SYNC_READ_POSITION[..]).into()),
-        )
+    let writable = port.writable().unwrap();
+
+    let writer: WritableStreamDefaultWriter = writable.get_writer().unwrap().dyn_into().unwrap();
+
+    // sleep
+    JsFuture::from(writer.write_with_chunk(&js_sys::Uint8Array::from(&torque_on[..]).into()))
         .await
         .unwrap();
-        sleep(wait_time).await;
-        let result = JsFuture::from(reader.read()).await;
-        match result {
-            Err(err) => {
-                web_sys::console::log_1(
-                    &format!("Error reading from serial port: {:?}", err).into(),
-                );
-            }
-            Ok(res) => {
-                // Manufacture the element we're gonna append
-
-                // Process the read data here
-                let done = js_sys::Reflect::get(&res, &"done".into())
-                    .unwrap()
-                    .as_bool()
-                    .unwrap_or(true);
-                let value = js_sys::Reflect::get(&res, &"value".into()).unwrap();
-                let data = js_sys::Uint8Array::from(value);
-                let bytes = data.to_vec();
-                // Parse motor positions
-                for motor_id in 0..6 {
-                    if let Some((id, pos)) = parse_status_packet(&bytes, motor_id * 15) {
-                        results[id as usize - 1] = raw_to_radians(pos);
-                        let val = &motors[id as usize - 1];
-                        val.set_text_content(Some(
-                            (raw_to_radians(pos) * 360. / (2. * std::f64::consts::PI))
-                                .round()
-                                .to_string()
-                                .as_str(),
-                        ));
-                    } else {
-                        web_sys::console::log_1(
-                            &format!("Failed to parse packet for motor {}", motor_id + 1).into(),
-                        );
-                    }
-                    if done {
-                        break;
-                    }
-                }
-
-                sleep(wait_time).await;
-            }
-        }
-    }
+    writer.release_lock();
 }
 
 #[allow(non_snake_case)]
 #[derive(Deserialize)]
 struct Motor {
-    branch_position: Vec<f64>,
-    T_motor_world: Vec<Vec<f64>>,
-    solution: f64,
+    branch_position: Vec<f32>,
+    T_motor_world: Vec<Vec<f32>>,
+    solution: f32,
 }
 static MOTOR_JSON: [u8; include_bytes!("motors.json").len()] = *include_bytes!("motors.json");
 
-// Dynamixel Protocol 2.0 packets
-const SYNC_READ_POSITION: [u8; 20] = [
-    0xFF, 0xFF, 0xFD, 0x00, // Header
-    0xFE, // Broadcast ID
-    0x0D, 0x00, // Length = 13
-    0x82, // SYNC_READ instruction
-    0x84, 0x00, // Address 132 (Present Position)
-    0x04, 0x00, // Data length = 4 bytes
-    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, // Motor IDs 1-6
-    0xB2, 0x9B, // CRC
-];
-
 /// Convert raw motor position (0-4095) to radians
 /// XL330: 0-4095 maps to 0-360 degrees, center (2048) = 0 radians
-fn raw_to_radians(raw: i32) -> f64 {
-    ((raw - 2048) as f64 / 4096.0) * 2.0 * std::f64::consts::PI
+fn raw_to_radians(raw: i32) -> f32 {
+    ((raw - 2048) as f32 / 4096.0) * 2.0 * std::f32::consts::PI
 }
 
-// ============================================================
-// DYNAMIXEL PROTOCOL PARSING
-// ============================================================
-
-/// Parse a single status packet and return (motor_id, position) if valid
-fn parse_status_packet(data: &[u8], offset: usize) -> Option<(u8, i32)> {
-    if offset + 15 > data.len() {
-        return None;
-    }
-
-    // Check header
-    if data[offset] != 0xFF
-        || data[offset + 1] != 0xFF
-        || data[offset + 2] != 0xFD
-        || data[offset + 3] != 0x00
-    {
-        return None;
-    }
-
-    let motor_id = data[offset + 4];
-    let length = data[offset + 5] as u16 | ((data[offset + 6] as u16) << 8);
-    let instruction = data[offset + 7];
-
-    // Status packet has instruction 0x55
-    if instruction != 0x55 {
-        return None;
-    }
-
-    // Check we have enough data (header=4 + id=1 + len=2 + instr=1 + err=1 + data=4 + crc=2 = 15)
-    if length != 8 {
-        return None;
-    }
-
-    let error = data[offset + 8];
-    if error != 0 {
-        console::log_1(&format!("Motor {} error: {:#04x}", motor_id, error).into());
-    }
-
-    // Read position as little-endian i32
-    let pos = data[offset + 9] as i32
-        | ((data[offset + 10] as i32) << 8)
-        | ((data[offset + 11] as i32) << 16)
-        | ((data[offset + 12] as i32) << 24);
-
-    Some((motor_id, pos))
+// Convert radians to raw
+fn radians_to_raw(radians: f32) -> i32 {
+    (radians * 4096.0 / (2.0 * std::f32::consts::PI) + 2048.0) as i32
 }
