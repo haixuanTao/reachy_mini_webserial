@@ -77,8 +77,9 @@ impl GenericSerialPort {
         writable.dyn_into()
     }
 }
+
 #[wasm_bindgen]
-pub async fn test3() {
+pub async fn fk() {
     let data = String::from_utf8(MOTOR_JSON.to_vec()).unwrap();
     let motors: Vec<Motor> = serde_json::from_str(&data).expect("JSON was not well-formatted");
     let mut kinematics = Kinematics::new(0.038, 0.09);
@@ -246,6 +247,109 @@ pub async fn test3() {
         }
     }
 }
+
+#[wasm_bindgen]
+pub async fn joint_only() {
+    let wait_time = if web_sys::window()
+        .unwrap()
+        .navigator()
+        .user_agent()
+        .unwrap()
+        .to_lowercase()
+        .contains("android")
+    {
+        100
+    } else {
+        25
+    };
+    // Test inverse kinematics
+    let window = web_sys::window().expect("no global `window` exists");
+    let document = window.document().expect("should have a document on window");
+
+    let port_js = requestSerialPort()
+        .await
+        .expect("Failed to get serial port");
+
+    let port = GenericSerialPort::new(port_js);
+
+    // Open with baud rate
+    port.open(1_000_000).await.expect("Failed to open port");
+    web_sys::console::log_1(&format!("port").into());
+
+    // Now you can read/write
+    // Get the readable stream
+    let readable = port.readable().unwrap();
+    let writable = port.writable().unwrap();
+    let reader: ReadableStreamDefaultReader = readable.get_reader().dyn_into().unwrap();
+    let writer: WritableStreamDefaultWriter = writable.get_writer().unwrap().dyn_into().unwrap();
+    web_sys::console::log_1(&reader);
+    // Read data in a loop
+    let motors = vec![1, 2, 3, 4, 5, 6]
+        .iter()
+        .map(|i| document.get_element_by_id(&format!("motor-{i}")).unwrap())
+        .collect::<Vec<_>>();
+    let pose_x = document.get_element_by_id("pose-x").unwrap();
+    let pose_y = document.get_element_by_id("pose-y").unwrap();
+    let pose_z = document.get_element_by_id("pose-z").unwrap();
+    let pose_roll = document.get_element_by_id("pose-roll").unwrap();
+    let pose_pitch = document.get_element_by_id("pose-pitch").unwrap();
+    let pose_yaw = document.get_element_by_id("pose-yaw").unwrap();
+    web_sys::console::log_1(&"ok".into());
+
+    let mut results = vec![0.0; 6];
+    loop {
+        // sleep
+        JsFuture::from(
+            writer.write_with_chunk(&js_sys::Uint8Array::from(&SYNC_READ_POSITION[..]).into()),
+        )
+        .await
+        .unwrap();
+        sleep(wait_time).await;
+        let result = JsFuture::from(reader.read()).await;
+        match result {
+            Err(err) => {
+                web_sys::console::log_1(
+                    &format!("Error reading from serial port: {:?}", err).into(),
+                );
+            }
+            Ok(res) => {
+                // Manufacture the element we're gonna append
+
+                // Process the read data here
+                let done = js_sys::Reflect::get(&res, &"done".into())
+                    .unwrap()
+                    .as_bool()
+                    .unwrap_or(true);
+                let value = js_sys::Reflect::get(&res, &"value".into()).unwrap();
+                let data = js_sys::Uint8Array::from(value);
+                let bytes = data.to_vec();
+                // Parse motor positions
+                for motor_id in 0..6 {
+                    if let Some((id, pos)) = parse_status_packet(&bytes, motor_id * 15) {
+                        results[id as usize - 1] = raw_to_radians(pos);
+                        let val = &motors[id as usize - 1];
+                        val.set_text_content(Some(
+                            (raw_to_radians(pos) * 360. / (2. * std::f64::consts::PI))
+                                .round()
+                                .to_string()
+                                .as_str(),
+                        ));
+                    } else {
+                        web_sys::console::log_1(
+                            &format!("Failed to parse packet for motor {}", motor_id + 1).into(),
+                        );
+                    }
+                    if done {
+                        break;
+                    }
+                }
+
+                sleep(wait_time).await;
+            }
+        }
+    }
+}
+
 #[allow(non_snake_case)]
 #[derive(Deserialize)]
 struct Motor {
