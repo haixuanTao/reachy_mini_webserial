@@ -465,7 +465,8 @@
                     isConnected = true;
                     connectStatus.classList.add('active');
                     connectControl.classList.remove('highlight');
-                    [toggleTorque, toggleMic, toggleVideo, btnReadPosition, btnRecord, btnReplay].forEach(el => el.disabled = false);
+                    [toggleTorque, btnReadPosition, btnRecord, btnReplay].forEach(el => el.disabled = false);
+                    // [toggleTorque, toggleMic, toggleVideo, btnReadPosition, btnRecord, btnReplay].forEach(el => el.disabled = false);
                     addMessage('success', 'Connected', 'Successfully connected to Reachy Mini.');
                 } catch (err) {
                     e.target.checked = false;
@@ -516,7 +517,7 @@
         async function disconnect() {}
 
         // Welcome
-        addMessage('system', 'Welcome', 'Toggle "Connect" to start.');
+        addMessage('system', 'Welcome', 'Toggle "Connect" to start. Please use Chrome Browser and diactivate Reachy Mini Daemon ( for now )');
     </script>
     <script src="index.js"></script>
 </body>
