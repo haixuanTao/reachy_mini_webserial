@@ -107,6 +107,7 @@
       text-align: center;
     }
     .motor-badge.active { background: #22c55e33; border: 1px solid #22c55e; }
+    .motor-badge.error { background: #ef444433; border: 1px solid #ef4444; color: #f87171; }
     .motor-badge span { display: block; font-size: 10px; color: #666; }
     .tabs { display: flex; background: #232340; }
     .tab {
@@ -122,6 +123,14 @@
     .tab.active { border-bottom-color: #667eea; color: #667eea; }
     .tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; }
     .tab-content.active { display: flex; }
+    
+    /* Blockly toolbox text fix */
+    .blocklyTreeLabel, .blocklyToolboxCategory {
+      color: #000000 !important;
+    }
+    .blocklyTreeRow:hover {
+      background-color: rgba(255,255,255,0.1) !important;
+    }
   </style>
 </head>
 <body>
@@ -133,8 +142,10 @@
     </div>
     <div class="controls">
       <button id="connectBtn" onclick="toggleConnection()">🔌 Connect</button>
+      <button onclick="checkMotors()">🔍 Check</button>
       <button onclick="enableAllTorque()">⚡ Enable All</button>
       <button onclick="disableAllTorque()">💤 Disable All</button>
+      <button onclick="rebootAllMotors()">🔄 Reboot All</button>
       <button class="primary" onclick="runCode()">▶ Run</button>
       <button class="danger" onclick="stopCode()">⬛ Stop</button>
       <button onclick="saveWorkspace()">💾 Save</button>
@@ -181,6 +192,10 @@
       <block type="robot_disable_all"></block>
       <block type="robot_enable_group"></block>
       <block type="robot_disable_group"></block>
+      <block type="robot_check_motors"></block>
+      <block type="robot_ping_motor"></block>
+      <block type="robot_reboot_motor"></block>
+      <block type="robot_reboot_all"></block>
     </category>
     
     <!-- Motor Control -->
@@ -375,6 +390,7 @@
     <category name="🧩 Functions" colour="290" custom="PROCEDURE"></category>
   </xml>
 
+  <script src="index.js"></script>
   <script>
     // ========== Global State ==========
     var stopRequested = false;
@@ -526,6 +542,8 @@
           updateConnectionStatus(true);
           logConsole('Connected to robot', 'success');
           self.startPositionPolling();
+          // Auto-check motors after connection
+          setTimeout(function() { checkMotors(); }, 500);
           return true;
         }).catch(function(e) {
           logConsole('Connection failed: ' + e.message, 'error');
@@ -640,18 +658,152 @@
       },
 
       // High-level API
+      
+      // Dynamixel error codes
+      errorCodes: {
+        0x01: 'Result Fail',
+        0x02: 'Instruction Error',
+        0x04: 'CRC Error',
+        0x08: 'Data Range Error',
+        0x10: 'Data Length Error',
+        0x20: 'Data Limit Error',
+        0x40: 'Access Error',
+        0x80: 'Hardware Alert'  // Voltage, Overheating, etc.
+      },
+      
+      parseError: function(errorByte) {
+        if (errorByte === 0) return null;
+        var errors = [];
+        for (var code in this.errorCodes) {
+          if (errorByte & parseInt(code)) {
+            errors.push(this.errorCodes[code]);
+          }
+        }
+        return errors.join(', ');
+      },
+
+      // Build REBOOT packet (instruction 0x08)
+      buildRebootPacket: function(id) {
+        return this.buildPacket(id, 0x08, []);
+      },
+
+      // Build PING packet (instruction 0x01)
+      buildPingPacket: function(id) {
+        return this.buildPacket(id, 0x01, []);
+      },
+
+      // Ping a motor to check if it responds
+      pingMotor: function(id) {
+        var self = this;
+        var packet = this.buildPingPacket(id);
+        return this.sendPacket(packet, true, id).then(function(response) {
+          if (response && response.length >= 11) {
+            var error = response[8];
+            if (error !== 0) {
+              var errorMsg = self.parseError(error);
+              return { ok: false, error: errorMsg, hasHardwareAlert: !!(error & 0x80) };
+            }
+            return { ok: true, error: null };
+          }
+          return { ok: false, error: 'No response', hasHardwareAlert: false };
+        });
+      },
+
+      // Check all motors and report status
+      checkAllMotors: function() {
+        var self = this;
+        var results = {};
+        var checkNext = function(index) {
+          if (index >= self.motorIds.length) {
+            return Promise.resolve(results);
+          }
+          var id = self.motorIds[index];
+          return self.pingMotor(id).then(function(result) {
+            results[id] = result;
+            return checkNext(index + 1);
+          });
+        };
+        return checkNext(0);
+      },
+
+      // Reboot a motor (clears hardware error status)
+      rebootMotor: function(id) {
+        var self = this;
+        var packet = this.buildRebootPacket(id);
+        logConsole('Rebooting motor ' + id + '...', 'warn');
+        return this.sendPacket(packet, false).then(function() {
+          // Wait for motor to reboot
+          return new Promise(function(r) { setTimeout(r, 500); });
+        }).then(function() {
+          return self.pingMotor(id);
+        }).then(function(result) {
+          if (result.ok) {
+            logConsole('Motor ' + id + ' rebooted successfully', 'success');
+          } else {
+            logConsole('Motor ' + id + ' still has error after reboot: ' + result.error, 'error');
+          }
+          return result;
+        });
+      },
+
+      // Reboot all motors
+      rebootAllMotors: function() {
+        var self = this;
+        var rebootNext = function(index) {
+          if (index >= self.motorIds.length) {
+            return Promise.resolve();
+          }
+          return self.rebootMotor(self.motorIds[index]).then(function() {
+            return rebootNext(index + 1);
+          });
+        };
+        return rebootNext(0);
+      },
+
       setTorque: function(id, enable) {
+        var self = this;
         var packet = this.buildWritePacket(id, 64, [enable ? 1 : 0]);
-        return this.sendPacket(packet, false);
+        return this.sendPacket(packet, true, id).then(function(response) {
+          if (response && response.length >= 11) {
+            var error = response[8];
+            if (error !== 0) {
+              var errorMsg = self.parseError(error);
+              logConsole('Motor ' + id + ' torque error: ' + errorMsg, 'error');
+              if (error & 0x80) {
+                logConsole('Motor ' + id + ' has hardware alert - try rebooting', 'warn');
+              }
+              return false;
+            }
+            return true;
+          } else {
+            logConsole('Motor ' + id + ' not responding', 'error');
+            return false;
+          }
+        });
       },
 
       setTorqueMultiple: function(ids, enable) {
-        var motorData = [];
-        for (var i = 0; i < ids.length; i++) {
-          motorData.push({ id: ids[i], data: [enable ? 1 : 0] });
-        }
-        var packet = this.buildSyncWritePacket(64, 1, motorData);
-        return this.sendPacket(packet, false);
+        var self = this;
+        var results = { success: [], failed: [] };
+        var setNext = function(index) {
+          if (index >= ids.length) {
+            return Promise.resolve(results);
+          }
+          return self.setTorque(ids[index], enable).then(function(ok) {
+            if (ok) {
+              results.success.push(ids[index]);
+            } else {
+              results.failed.push(ids[index]);
+            }
+            return setNext(index + 1);
+          });
+        };
+        return setNext(0).then(function(results) {
+          if (results.failed.length > 0) {
+            logConsole('Failed to set torque on motors: ' + results.failed.join(', '), 'error');
+          }
+          return results;
+        });
       },
 
       setPosition: function(id, position) {
@@ -752,15 +904,67 @@
 
     function enableAllTorque() {
       if (!Robot.connected) { logConsole('Not connected', 'error'); return; }
-      Robot.setTorqueMultiple(Robot.motorIds, true).then(function() {
-        logConsole('All motors enabled', 'success');
+      Robot.setTorqueMultiple(Robot.motorIds, true).then(function(results) {
+        if (results.failed.length === 0) {
+          logConsole('All motors enabled', 'success');
+        }
       });
     }
 
     function disableAllTorque() {
       if (!Robot.connected) { logConsole('Not connected', 'error'); return; }
-      Robot.setTorqueMultiple(Robot.motorIds, false).then(function() {
-        logConsole('All motors disabled', 'success');
+      Robot.setTorqueMultiple(Robot.motorIds, false).then(function(results) {
+        if (results.failed.length === 0) {
+          logConsole('All motors disabled', 'success');
+        }
+      });
+    }
+
+    function checkMotors() {
+      if (!Robot.connected) { logConsole('Not connected', 'error'); return; }
+      logConsole('Checking all motors...', 'info');
+      Robot.checkAllMotors().then(function(results) {
+        var ok = [];
+        var failed = [];
+        var alerts = [];
+        for (var id in results) {
+          var el = document.getElementById('motor' + id);
+          if (results[id].ok) {
+            ok.push(id);
+            if (el) {
+              el.classList.remove('error');
+              el.classList.add('active');
+            }
+          } else {
+            failed.push(id);
+            if (el) {
+              el.classList.add('error');
+              el.classList.remove('active');
+            }
+            if (results[id].hasHardwareAlert) {
+              alerts.push(id);
+            }
+          }
+        }
+        if (failed.length === 0) {
+          logConsole('All ' + ok.length + ' motors OK', 'success');
+        } else {
+          logConsole('Motors OK: ' + ok.join(', '), 'success');
+          logConsole('Motors FAILED: ' + failed.join(', '), 'error');
+          if (alerts.length > 0) {
+            logConsole('Motors with hardware alert (need reboot): ' + alerts.join(', '), 'warn');
+          }
+        }
+      });
+    }
+
+    function rebootAllMotors() {
+      if (!Robot.connected) { logConsole('Not connected', 'error'); return; }
+      if (!confirm('Reboot all motors? This will clear hardware errors but motors will lose torque.')) return;
+      logConsole('Rebooting all motors...', 'warn');
+      Robot.rebootAllMotors().then(function() {
+        logConsole('All motors rebooted', 'success');
+        checkMotors();
       });
     }
 
@@ -912,6 +1116,64 @@
     Blockly.JavaScript.forBlock['robot_disable_group'] = function(block) {
       var group = block.getFieldValue('GROUP');
       return 'await Robot.setTorqueMultiple(Robot.motorGroups["' + group + '"], false);\n';
+    };
+
+    Blockly.Blocks['robot_check_motors'] = {
+      init: function() {
+        this.appendDummyInput().appendField('check all motors');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(260);
+        this.setTooltip('Ping all motors and log their status');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_check_motors'] = function(block) {
+      return 'await (async function() { var results = await Robot.checkAllMotors(); var ok = [], failed = []; for (var id in results) { if (results[id].ok) ok.push(id); else failed.push(id); } if (failed.length === 0) { logConsole("All " + ok.length + " motors OK", "success"); } else { logConsole("OK: " + ok.join(", ") + " | FAILED: " + failed.join(", "), "error"); } })();\n';
+    };
+
+    Blockly.Blocks['robot_ping_motor'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
+            .appendField('is responding');
+        this.setOutput(true, 'Boolean');
+        this.setColour(260);
+        this.setTooltip('Check if a motor responds to ping');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_ping_motor'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      return ['(await Robot.pingMotor(' + motor + ')).ok', Blockly.JavaScript.ORDER_AWAIT];
+    };
+
+    Blockly.Blocks['robot_reboot_motor'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('reboot motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(260);
+        this.setTooltip('Reboot motor to clear hardware errors (voltage, overtemp)');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_reboot_motor'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      return 'await Robot.rebootMotor(' + motor + ');\n';
+    };
+
+    Blockly.Blocks['robot_reboot_all'] = {
+      init: function() {
+        this.appendDummyInput().appendField('reboot all motors');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(260);
+        this.setTooltip('Reboot all motors to clear hardware errors');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_reboot_all'] = function(block) {
+      return 'await Robot.rebootAllMotors();\n';
     };
 
     // === Motor Blocks ===
