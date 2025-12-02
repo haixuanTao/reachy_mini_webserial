@@ -1,0 +1,1533 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reachy Mini - Blockly Controller</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/blockly/10.4.3/blockly.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0e0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    header h1 { font-size: 1.3rem; display: flex; align-items: center; gap: 8px; }
+    .status { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #ef4444;
+      transition: all 0.3s;
+    }
+    .status-dot.connected { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+    .controls { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+    button {
+      background: rgba(255,255,255,0.15);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    button:hover { background: rgba(255,255,255,0.25); transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    button.primary { background: #22c55e; border-color: #16a34a; }
+    button.primary:hover { background: #16a34a; }
+    button.danger { background: #ef4444; border-color: #dc2626; }
+    button.danger:hover { background: #dc2626; }
+    main { flex: 1; display: flex; overflow: hidden; }
+    #blocklyDiv { flex: 1; height: 100%; }
+    .sidebar {
+      width: 340px;
+      background: #1a1a2e;
+      border-left: 1px solid #2a2a4a;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-header {
+      padding: 10px 14px;
+      background: #232340;
+      font-weight: 600;
+      font-size: 12px;
+      color: #888;
+      border-bottom: 1px solid #2a2a4a;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .code-output {
+      flex: 1;
+      padding: 12px;
+      overflow: auto;
+      font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      color: #a0a0c0;
+      background: #12121f;
+    }
+    .console { height: 200px; border-top: 1px solid #2a2a4a; display: flex; flex-direction: column; }
+    .console-output {
+      flex: 1; padding: 10px; overflow-y: auto;
+      font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+      font-size: 11px;
+      background: #0a0a14;
+    }
+    .console-output div { padding: 2px 0; border-bottom: 1px solid #1a1a2a; }
+    .console-output .log { color: #a0a0c0; }
+    .console-output .error { color: #f87171; }
+    .console-output .success { color: #4ade80; }
+    .console-output .warn { color: #fbbf24; }
+    .console-output .info { color: #60a5fa; }
+    .motor-status {
+      padding: 10px;
+      background: #12121f;
+      border-bottom: 1px solid #2a2a4a;
+      font-size: 11px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+    .motor-badge {
+      background: #232340;
+      padding: 4px 8px;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .motor-badge.active { background: #22c55e33; border: 1px solid #22c55e; }
+    .motor-badge span { display: block; font-size: 10px; color: #666; }
+    .tabs { display: flex; background: #232340; }
+    .tab {
+      flex: 1;
+      padding: 8px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 12px;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .tab:hover { background: #2a2a50; }
+    .tab.active { border-bottom-color: #667eea; color: #667eea; }
+    .tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .tab-content.active { display: flex; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🤖 Reachy Mini</h1>
+    <div class="status">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Disconnected</span>
+    </div>
+    <div class="controls">
+      <button id="connectBtn" onclick="toggleConnection()">🔌 Connect</button>
+      <button onclick="enableAllTorque()">⚡ Enable All</button>
+      <button onclick="disableAllTorque()">💤 Disable All</button>
+      <button class="primary" onclick="runCode()">▶ Run</button>
+      <button class="danger" onclick="stopCode()">⬛ Stop</button>
+      <button onclick="saveWorkspace()">💾 Save</button>
+      <button onclick="loadWorkspace()">📂 Load</button>
+    </div>
+  </header>
+  
+  <main>
+    <div id="blocklyDiv"></div>
+    <div class="sidebar">
+      <div class="sidebar-header">Motor Status</div>
+      <div class="motor-status" id="motorStatus">
+        <div class="motor-badge" id="motor11">M11<span>--</span></div>
+        <div class="motor-badge" id="motor12">M12<span>--</span></div>
+        <div class="motor-badge" id="motor13">M13<span>--</span></div>
+        <div class="motor-badge" id="motor14">M14<span>--</span></div>
+        <div class="motor-badge" id="motor15">M15<span>--</span></div>
+        <div class="motor-badge" id="motor16">M16<span>--</span></div>
+        <div class="motor-badge" id="motor17">M17<span>--</span></div>
+        <div class="motor-badge" id="motor18">M18<span>--</span></div>
+      </div>
+      <div class="tabs">
+        <div class="tab" onclick="switchTab('code')">Code</div>
+        <div class="tab active" onclick="switchTab('console')">Console</div>
+      </div>
+      <div class="tab-content" id="codeTab">
+        <div class="sidebar-header">Generated JavaScript</div>
+        <div class="code-output" id="codeOutput">// Drag blocks here...</div>
+      </div>
+      <div class="tab-content active" id="consoleTab">
+        <div class="sidebar-header">Console Output</div>
+        <div class="console-output" id="consoleOutput"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Comprehensive Toolbox -->
+  <xml id="toolbox" style="display: none">
+    <!-- Robot Connection -->
+    <category name="🔌 Connection" colour="260">
+      <block type="robot_enable_torque"></block>
+      <block type="robot_disable_torque"></block>
+      <block type="robot_enable_all"></block>
+      <block type="robot_disable_all"></block>
+      <block type="robot_enable_group"></block>
+      <block type="robot_disable_group"></block>
+    </category>
+    
+    <!-- Motor Control -->
+    <category name="🦾 Motors" colour="160">
+      <block type="robot_set_position">
+        <value name="POSITION"><shadow type="math_number"><field name="NUM">2048</field></shadow></value>
+      </block>
+      <block type="robot_set_degrees">
+        <value name="DEGREES"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+      </block>
+      <block type="robot_get_position"></block>
+      <block type="robot_get_degrees"></block>
+      <block type="robot_move_by">
+        <value name="AMOUNT"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+      </block>
+      <block type="robot_move_smooth">
+        <value name="POSITION"><shadow type="math_number"><field name="NUM">2048</field></shadow></value>
+        <value name="DURATION"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+      </block>
+      <block type="robot_set_speed">
+        <value name="SPEED"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+      </block>
+    </category>
+    
+    <!-- Multi-Motor -->
+    <category name="🔗 Multi-Motor" colour="180">
+      <block type="robot_get_all_positions"></block>
+      <block type="robot_get_group_positions"></block>
+      <block type="robot_set_positions_from_list"></block>
+      <block type="robot_set_group_from_list"></block>
+      <block type="robot_set_multiple"></block>
+      <block type="robot_copy_pose"></block>
+      <block type="robot_home_position"></block>
+      <block type="robot_record_pose"></block>
+      <block type="robot_play_pose"></block>
+    </category>
+    
+    <!-- Kinematics -->
+    <category name="🦿 Kinematics" colour="290">
+      <block type="robot_forward_kinematics"></block>
+      <block type="robot_inverse_kinematics"></block>
+      <block type="robot_create_pose">
+        <value name="X"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="Y"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="Z"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="ROLL"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="PITCH"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="YAW"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+      </block>
+      <block type="robot_get_pose_component"></block>
+      <block type="robot_move_to_pose"></block>
+      <block type="robot_get_current_pose"></block>
+      <block type="robot_joints_to_degrees"></block>
+      <block type="robot_degrees_to_joints"></block>
+    </category>
+    
+    <!-- Sensing -->
+    <category name="📡 Sensing" colour="210">
+      <block type="robot_is_moving"></block>
+      <block type="robot_wait_until_stopped">
+        <value name="TIMEOUT"><shadow type="math_number"><field name="NUM">5</field></shadow></value>
+      </block>
+      <block type="robot_get_load"></block>
+      <block type="robot_get_temperature"></block>
+      <block type="robot_position_in_range">
+        <value name="MIN"><shadow type="math_number"><field name="NUM">1800</field></shadow></value>
+        <value name="MAX"><shadow type="math_number"><field name="NUM">2200</field></shadow></value>
+      </block>
+    </category>
+    
+    <!-- Timing -->
+    <category name="⏱️ Timing" colour="120">
+      <block type="robot_wait">
+        <value name="TIME"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+      </block>
+      <block type="robot_wait_ms">
+        <value name="TIME"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+      </block>
+      <block type="robot_get_time"></block>
+      <block type="robot_reset_timer"></block>
+      <block type="robot_timer_value"></block>
+    </category>
+    
+    <!-- Output -->
+    <category name="📝 Output" colour="60">
+      <block type="robot_log">
+        <value name="MESSAGE"><shadow type="text"><field name="TEXT">Hello!</field></shadow></value>
+      </block>
+      <block type="robot_log_position"></block>
+      <block type="robot_log_type"></block>
+    </category>
+    
+    <sep></sep>
+    
+    <!-- Logic (Built-in) -->
+    <category name="🔀 Logic" colour="210">
+      <block type="controls_if"></block>
+      <block type="controls_if">
+        <mutation else="1"></mutation>
+      </block>
+      <block type="controls_if">
+        <mutation elseif="1" else="1"></mutation>
+      </block>
+      <block type="logic_compare"></block>
+      <block type="logic_operation"></block>
+      <block type="logic_negate"></block>
+      <block type="logic_boolean"></block>
+      <block type="logic_ternary"></block>
+    </category>
+    
+    <!-- Loops (Built-in) -->
+    <category name="🔁 Loops" colour="120">
+      <block type="controls_repeat_ext">
+        <value name="TIMES"><shadow type="math_number"><field name="NUM">10</field></shadow></value>
+      </block>
+      <block type="controls_whileUntil"></block>
+      <block type="controls_for">
+        <value name="FROM"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+        <value name="TO"><shadow type="math_number"><field name="NUM">10</field></shadow></value>
+        <value name="BY"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+      </block>
+      <block type="controls_forEach"></block>
+      <block type="controls_flow_statements"></block>
+    </category>
+    
+    <!-- Math (Built-in) -->
+    <category name="🔢 Math" colour="230">
+      <block type="math_number"><field name="NUM">0</field></block>
+      <block type="math_arithmetic"></block>
+      <block type="math_single"></block>
+      <block type="math_trig"></block>
+      <block type="math_constant"></block>
+      <block type="math_number_property"></block>
+      <block type="math_round"></block>
+      <block type="math_on_list"></block>
+      <block type="math_modulo"></block>
+      <block type="math_constrain">
+        <value name="LOW"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="HIGH"><shadow type="math_number"><field name="NUM">4095</field></shadow></value>
+      </block>
+      <block type="math_random_int">
+        <value name="FROM"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+        <value name="TO"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+      </block>
+      <block type="math_random_float"></block>
+      <block type="math_atan2"></block>
+    </category>
+    
+    <!-- Text (Built-in) -->
+    <category name="📄 Text" colour="160">
+      <block type="text"></block>
+      <block type="text_join"></block>
+      <block type="text_append">
+        <value name="TEXT"><shadow type="text"></shadow></value>
+      </block>
+      <block type="text_length"></block>
+      <block type="text_isEmpty"></block>
+      <block type="text_indexOf"></block>
+      <block type="text_charAt"></block>
+      <block type="text_getSubstring"></block>
+      <block type="text_changeCase"></block>
+      <block type="text_trim"></block>
+      <block type="text_prompt_ext">
+        <value name="TEXT"><shadow type="text"><field name="TEXT">Enter value:</field></shadow></value>
+      </block>
+    </category>
+    
+    <!-- Lists (Built-in) -->
+    <category name="📋 Lists" colour="260">
+      <block type="lists_create_empty"></block>
+      <block type="lists_create_with"></block>
+      <block type="lists_repeat">
+        <value name="NUM"><shadow type="math_number"><field name="NUM">5</field></shadow></value>
+      </block>
+      <block type="lists_length"></block>
+      <block type="lists_isEmpty"></block>
+      <block type="lists_indexOf"></block>
+      <block type="lists_getIndex"></block>
+      <block type="lists_setIndex"></block>
+      <block type="lists_getSublist"></block>
+      <block type="lists_split">
+        <value name="DELIM"><shadow type="text"><field name="TEXT">,</field></shadow></value>
+      </block>
+      <block type="lists_sort"></block>
+      <block type="lists_reverse"></block>
+    </category>
+    
+    <!-- Variables (Built-in) -->
+    <category name="📦 Variables" colour="330" custom="VARIABLE"></category>
+    
+    <!-- Functions (Built-in) -->
+    <category name="🧩 Functions" colour="290" custom="PROCEDURE"></category>
+  </xml>
+
+  <script>
+    // ========== Global State ==========
+    var stopRequested = false;
+    var programTimer = 0;
+    var recordedPoses = {};
+    var motorPositionCache = {};
+
+    // ========== Kinematics Functions ==========
+    // These call the WASM functions attached to window
+    // Expected: window.forward_kinematics(joints) -> [x, y, z, roll, pitch, yaw]
+    // Expected: window.inverse_kinematics(pose) -> [j1, j2, ..., j8]
+    
+    function callFK(joints) {
+      return window.forward_kinematics(joints);
+    }
+
+    function callIK(pose) {
+      return window.inverse_kinematics(pose);
+    }
+
+    // ========== Console Logging ==========
+    function logConsole(message, type) {
+      type = type || 'log';
+      var el = document.getElementById('consoleOutput');
+      var line = document.createElement('div');
+      line.className = type;
+      var time = new Date().toLocaleTimeString();
+      line.textContent = '[' + time + '] ' + message;
+      el.appendChild(line);
+      el.scrollTop = el.scrollHeight;
+      // Also log to browser console
+      console.log('[' + type + ']', message);
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelector('.tab:nth-child(' + (tab === 'code' ? '1' : '2') + ')').classList.add('active');
+      document.getElementById(tab + 'Tab').classList.add('active');
+    }
+
+    // ========== Robot Communication ==========
+    var Robot = {
+      port: null,
+      reader: null,
+      writer: null,
+      connected: false,
+      readBuffer: [],
+      motorIds: [11, 12, 13, 14, 15, 16, 17, 18],
+      motorGroups: {
+        'all': [11, 12, 13, 14, 15, 16, 17, 18],
+        'arm': [11, 12, 13, 14, 15],
+        'head': [17, 18],
+        'wrist': [16]
+      },
+
+      CRC_TABLE: [
+        0x0000, 0x8005, 0x800F, 0x000A, 0x801B, 0x001E, 0x0014, 0x8011,
+        0x8033, 0x0036, 0x003C, 0x8039, 0x0028, 0x802D, 0x8027, 0x0022,
+        0x8063, 0x0066, 0x006C, 0x8069, 0x0078, 0x807D, 0x8077, 0x0072,
+        0x0050, 0x8055, 0x805F, 0x005A, 0x804B, 0x004E, 0x0044, 0x8041,
+        0x80C3, 0x00C6, 0x00CC, 0x80C9, 0x00D8, 0x80DD, 0x80D7, 0x00D2,
+        0x00F0, 0x80F5, 0x80FF, 0x00FA, 0x80EB, 0x00EE, 0x00E4, 0x80E1,
+        0x00A0, 0x80A5, 0x80AF, 0x00AA, 0x80BB, 0x00BE, 0x00B4, 0x80B1,
+        0x8093, 0x0096, 0x009C, 0x8099, 0x0088, 0x808D, 0x8087, 0x0082,
+        0x8183, 0x0186, 0x018C, 0x8189, 0x0198, 0x819D, 0x8197, 0x0192,
+        0x01B0, 0x81B5, 0x81BF, 0x01BA, 0x81AB, 0x01AE, 0x01A4, 0x81A1,
+        0x01E0, 0x81E5, 0x81EF, 0x01EA, 0x81FB, 0x01FE, 0x01F4, 0x81F1,
+        0x81D3, 0x01D6, 0x01DC, 0x81D9, 0x01C8, 0x81CD, 0x81C7, 0x01C2,
+        0x0140, 0x8145, 0x814F, 0x014A, 0x815B, 0x015E, 0x0154, 0x8151,
+        0x8173, 0x0176, 0x017C, 0x8179, 0x0168, 0x816D, 0x8167, 0x0162,
+        0x8123, 0x0126, 0x012C, 0x8129, 0x0138, 0x813D, 0x8137, 0x0132,
+        0x0110, 0x8115, 0x811F, 0x011A, 0x810B, 0x010E, 0x0104, 0x8101,
+        0x8303, 0x0306, 0x030C, 0x8309, 0x0318, 0x831D, 0x8317, 0x0312,
+        0x0330, 0x8335, 0x833F, 0x033A, 0x832B, 0x032E, 0x0324, 0x8321,
+        0x0360, 0x8365, 0x836F, 0x036A, 0x837B, 0x037E, 0x0374, 0x8371,
+        0x8353, 0x0356, 0x035C, 0x8359, 0x0348, 0x834D, 0x8347, 0x0342,
+        0x03C0, 0x83C5, 0x83CF, 0x03CA, 0x83DB, 0x03DE, 0x03D4, 0x83D1,
+        0x83F3, 0x03F6, 0x03FC, 0x83F9, 0x03E8, 0x83ED, 0x83E7, 0x03E2,
+        0x83A3, 0x03A6, 0x03AC, 0x83A9, 0x03B8, 0x83BD, 0x83B7, 0x03B2,
+        0x0390, 0x8395, 0x839F, 0x039A, 0x838B, 0x038E, 0x0384, 0x8381,
+        0x0280, 0x8285, 0x828F, 0x028A, 0x829B, 0x029E, 0x0294, 0x8291,
+        0x82B3, 0x02B6, 0x02BC, 0x82B9, 0x02A8, 0x82AD, 0x82A7, 0x02A2,
+        0x82E3, 0x02E6, 0x02EC, 0x82E9, 0x02F8, 0x82FD, 0x82F7, 0x02F2,
+        0x02D0, 0x82D5, 0x82DF, 0x02DA, 0x82CB, 0x02CE, 0x02C4, 0x82C1,
+        0x8243, 0x0246, 0x024C, 0x8249, 0x0258, 0x825D, 0x8257, 0x0252,
+        0x0270, 0x8275, 0x827F, 0x027A, 0x826B, 0x026E, 0x0264, 0x8261,
+        0x0220, 0x8225, 0x822F, 0x022A, 0x823B, 0x023E, 0x0234, 0x8231,
+        0x8213, 0x0216, 0x021C, 0x8219, 0x0208, 0x820D, 0x8207, 0x0202
+      ],
+
+      calculateCRC: function(data) {
+        var crc = 0;
+        for (var j = 0; j < data.length; j++) {
+          var i = ((crc >> 8) ^ data[j]) & 0xFF;
+          crc = ((crc << 8) ^ this.CRC_TABLE[i]) & 0xFFFF;
+        }
+        return crc;
+      },
+
+      buildPacket: function(id, instruction, params) {
+        params = params || [];
+        var length = 1 + params.length + 2;
+        var packet = [0xFF, 0xFF, 0xFD, 0x00, id, length & 0xFF, (length >> 8) & 0xFF, instruction];
+        for (var i = 0; i < params.length; i++) packet.push(params[i]);
+        var crc = this.calculateCRC(packet);
+        packet.push(crc & 0xFF, (crc >> 8) & 0xFF);
+        return new Uint8Array(packet);
+      },
+
+      buildWritePacket: function(id, address, data) {
+        var params = [address & 0xFF, (address >> 8) & 0xFF];
+        for (var i = 0; i < data.length; i++) params.push(data[i]);
+        return this.buildPacket(id, 0x03, params);
+      },
+
+      buildReadPacket: function(id, address, dataLength) {
+        var params = [address & 0xFF, (address >> 8) & 0xFF, dataLength & 0xFF, (dataLength >> 8) & 0xFF];
+        return this.buildPacket(id, 0x02, params);
+      },
+
+      buildSyncWritePacket: function(address, dataLength, motorData) {
+        var n = motorData.length;
+        var length = 1 + 2 + 2 + n * (1 + dataLength) + 2;
+        var packet = [0xFF, 0xFF, 0xFD, 0x00, 0xFE, length & 0xFF, (length >> 8) & 0xFF, 0x83,
+                      address & 0xFF, (address >> 8) & 0xFF, dataLength & 0xFF, (dataLength >> 8) & 0xFF];
+        for (var i = 0; i < motorData.length; i++) {
+          packet.push(motorData[i].id);
+          for (var j = 0; j < motorData[i].data.length; j++) {
+            packet.push(motorData[i].data[j]);
+          }
+        }
+        var crc = this.calculateCRC(packet);
+        packet.push(crc & 0xFF, (crc >> 8) & 0xFF);
+        return new Uint8Array(packet);
+      },
+
+      connect: function() {
+        var self = this;
+        return navigator.serial.requestPort().then(function(p) {
+          self.port = p;
+          return self.port.open({ baudRate: 1000000 });
+        }).then(function() {
+          self.writer = self.port.writable.getWriter();
+          self.reader = self.port.readable.getReader();
+          self.connected = true;
+          self.readBuffer = [];
+          self.startBackgroundReader();
+          updateConnectionStatus(true);
+          logConsole('Connected to robot', 'success');
+          self.startPositionPolling();
+          return true;
+        }).catch(function(e) {
+          logConsole('Connection failed: ' + e.message, 'error');
+          return false;
+        });
+      },
+
+      disconnect: function() {
+        var self = this;
+        self.connected = false;
+        self.stopPositionPolling();
+        return Promise.resolve().then(function() {
+          if (self.reader) return self.reader.cancel();
+        }).then(function() {
+          if (self.reader) self.reader.releaseLock();
+          if (self.writer) self.writer.releaseLock();
+          if (self.port) return self.port.close();
+        }).then(function() {
+          self.port = null;
+          self.reader = null;
+          self.writer = null;
+          self.readBuffer = [];
+          updateConnectionStatus(false);
+          logConsole('Disconnected', 'log');
+        }).catch(function() {});
+      },
+
+      startBackgroundReader: function() {
+        var self = this;
+        function readLoop() {
+          if (!self.connected || !self.reader) return;
+          self.reader.read().then(function(result) {
+            if (result.done) return;
+            if (result.value) {
+              for (var i = 0; i < result.value.length; i++) {
+                self.readBuffer.push(result.value[i]);
+              }
+              if (self.readBuffer.length > 2048) {
+                self.readBuffer = self.readBuffer.slice(-1024);
+              }
+            }
+            readLoop();
+          }).catch(function() {});
+        }
+        readLoop();
+      },
+
+      pollingInterval: null,
+      startPositionPolling: function() {
+        var self = this;
+        this.pollingInterval = setInterval(function() {
+          if (!self.connected) return;
+          // Update motor status display with cached positions
+          for (var i = 0; i < self.motorIds.length; i++) {
+            var id = self.motorIds[i];
+            var el = document.getElementById('motor' + id);
+            if (el && motorPositionCache[id] !== undefined) {
+              var deg = Math.round(self.positionToDegrees(motorPositionCache[id]));
+              el.querySelector('span').textContent = deg + '°';
+              el.classList.add('active');
+            }
+          }
+        }, 200);
+      },
+
+      stopPositionPolling: function() {
+        if (this.pollingInterval) {
+          clearInterval(this.pollingInterval);
+          this.pollingInterval = null;
+        }
+      },
+
+      waitForPacket: function(motorId, timeout) {
+        var self = this;
+        timeout = timeout || 200;
+        var start = Date.now();
+        return new Promise(function(resolve) {
+          function check() {
+            if (Date.now() - start > timeout) { resolve(null); return; }
+            for (var i = 0; i < self.readBuffer.length - 10; i++) {
+              if (self.readBuffer[i] === 0xFF && self.readBuffer[i+1] === 0xFF &&
+                  self.readBuffer[i+2] === 0xFD && self.readBuffer[i+3] === 0x00) {
+                var packetId = self.readBuffer[i+4];
+                var len = self.readBuffer[i+5] | (self.readBuffer[i+6] << 8);
+                var totalLen = 7 + len;
+                if (i + totalLen <= self.readBuffer.length) {
+                  if (self.readBuffer[i+7] === 0x55 && packetId === motorId) {
+                    var pkt = self.readBuffer.slice(i, i + totalLen);
+                    self.readBuffer = self.readBuffer.slice(i + totalLen);
+                    resolve(pkt);
+                    return;
+                  }
+                  self.readBuffer = self.readBuffer.slice(i + totalLen);
+                  i = -1;
+                }
+              }
+            }
+            setTimeout(check, 5);
+          }
+          check();
+        });
+      },
+
+      sendPacket: function(packet, expectResponse, motorId) {
+        var self = this;
+        if (!self.connected || !self.writer) return Promise.resolve(null);
+        self.readBuffer = [];
+        return self.writer.write(packet).then(function() {
+          if (!expectResponse) return new Promise(function(r) { setTimeout(function() { r(null); }, 5); });
+          return self.waitForPacket(motorId);
+        });
+      },
+
+      // High-level API
+      setTorque: function(id, enable) {
+        var packet = this.buildWritePacket(id, 64, [enable ? 1 : 0]);
+        return this.sendPacket(packet, false);
+      },
+
+      setTorqueMultiple: function(ids, enable) {
+        var motorData = [];
+        for (var i = 0; i < ids.length; i++) {
+          motorData.push({ id: ids[i], data: [enable ? 1 : 0] });
+        }
+        var packet = this.buildSyncWritePacket(64, 1, motorData);
+        return this.sendPacket(packet, false);
+      },
+
+      setPosition: function(id, position) {
+        var pos = Math.round(position);
+        var posUint = pos < 0 ? pos + 0x100000000 : pos;
+        var data = [posUint & 0xFF, (posUint >> 8) & 0xFF, (posUint >> 16) & 0xFF, (posUint >> 24) & 0xFF];
+        var packet = this.buildWritePacket(id, 116, data);
+        motorPositionCache[id] = pos;
+        return this.sendPacket(packet, false);
+      },
+
+      setPositionMultiple: function(ids, positions) {
+        var motorData = [];
+        for (var i = 0; i < ids.length; i++) {
+          var pos = Math.round(positions[i]);
+          var posUint = pos < 0 ? pos + 0x100000000 : pos;
+          motorData.push({
+            id: ids[i],
+            data: [posUint & 0xFF, (posUint >> 8) & 0xFF, (posUint >> 16) & 0xFF, (posUint >> 24) & 0xFF]
+          });
+          motorPositionCache[ids[i]] = pos;
+        }
+        var packet = this.buildSyncWritePacket(116, 4, motorData);
+        return this.sendPacket(packet, false);
+      },
+
+      getPosition: function(id) {
+        var self = this;
+        var packet = this.buildReadPacket(id, 132, 4);
+        return this.sendPacket(packet, true, id).then(function(response) {
+          if (response && response.length >= 15) {
+            var pos = response[9] | (response[10] << 8) | (response[11] << 16) | (response[12] << 24);
+            if (pos > 0x7FFFFFFF) pos -= 0x100000000;
+            motorPositionCache[id] = pos;
+            return pos;
+          }
+          return motorPositionCache[id] || 2048;
+        });
+      },
+
+      moveSmooth: function(id, targetPos, durationMs) {
+        var self = this;
+        return self.getPosition(id).then(function(startPos) {
+          var steps = Math.max(10, Math.floor(durationMs / 20));
+          var stepDelay = durationMs / steps;
+          var delta = targetPos - startPos;
+          
+          function doStep(step) {
+            if (step > steps || stopRequested) return Promise.resolve();
+            var t = step / steps;
+            // Ease in-out
+            t = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+            var pos = Math.round(startPos + delta * t);
+            return self.setPosition(id, pos).then(function() {
+              return new Promise(function(r) { setTimeout(r, stepDelay); });
+            }).then(function() {
+              return doStep(step + 1);
+            });
+          }
+          return doStep(1);
+        });
+      },
+
+      degreesToPosition: function(deg) {
+        return Math.round(2048 + (deg * 4096 / 360));
+      },
+
+      positionToDegrees: function(pos) {
+        return (pos - 2048) * 360 / 4096;
+      }
+    };
+
+    // ========== UI Functions ==========
+    function updateConnectionStatus(connected) {
+      document.getElementById('statusDot').className = 'status-dot' + (connected ? ' connected' : '');
+      document.getElementById('statusText').textContent = connected ? 'Connected' : 'Disconnected';
+      document.getElementById('connectBtn').textContent = connected ? '🔌 Disconnect' : '🔌 Connect';
+      
+      // Reset motor badges
+      if (!connected) {
+        Robot.motorIds.forEach(function(id) {
+          var el = document.getElementById('motor' + id);
+          if (el) {
+            el.querySelector('span').textContent = '--';
+            el.classList.remove('active');
+          }
+        });
+      }
+    }
+
+    function toggleConnection() {
+      if (Robot.connected) {
+        Robot.disconnect();
+      } else {
+        Robot.connect();
+      }
+    }
+
+    function enableAllTorque() {
+      if (!Robot.connected) { logConsole('Not connected', 'error'); return; }
+      Robot.setTorqueMultiple(Robot.motorIds, true).then(function() {
+        logConsole('All motors enabled', 'success');
+      });
+    }
+
+    function disableAllTorque() {
+      if (!Robot.connected) { logConsole('Not connected', 'error'); return; }
+      Robot.setTorqueMultiple(Robot.motorIds, false).then(function() {
+        logConsole('All motors disabled', 'success');
+      });
+    }
+
+    function runCode() {
+      if (!Robot.connected) {
+        logConsole('Please connect to the robot first', 'error');
+        return;
+      }
+      stopRequested = false;
+      programTimer = Date.now();
+      var code = Blockly.JavaScript.workspaceToCode(workspace);
+      if (!code.trim()) {
+        logConsole('No blocks to run', 'error');
+        return;
+      }
+      logConsole('Running program...', 'success');
+      switchTab('console');
+      var asyncCode = '(async function() { ' + code + ' })()';
+      eval(asyncCode).then(function() {
+        if (!stopRequested) logConsole('Program completed (' + ((Date.now() - programTimer)/1000).toFixed(1) + 's)', 'success');
+      }).catch(function(e) {
+        logConsole('Error: ' + e.message, 'error');
+        console.error(e);
+      });
+    }
+
+    function stopCode() {
+      stopRequested = true;
+      logConsole('Program stopped', 'warn');
+    }
+
+    function saveWorkspace() {
+      var xml = Blockly.Xml.workspaceToDom(workspace);
+      var xmlText = Blockly.Xml.domToText(xml);
+      var blob = new Blob([xmlText], {type: 'text/xml'});
+      var a = document.createElement('a');
+      a.download = 'reachy-program.xml';
+      a.href = URL.createObjectURL(blob);
+      a.click();
+      logConsole('Workspace saved', 'success');
+    }
+
+    function loadWorkspace() {
+      var input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.xml';
+      input.onchange = function(e) {
+        var file = e.target.files[0];
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          var xml = Blockly.utils.xml.textToDom(e.target.result);
+          Blockly.Xml.clearWorkspaceAndLoadFromXml(xml, workspace);
+          logConsole('Workspace loaded', 'success');
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    }
+
+    // ========== Custom Blocks ==========
+    var MOTORS = [['11','11'],['12','12'],['13','13'],['14','14'],['15','15'],['16','16'],['17','17'],['18','18']];
+    var MOTOR_GROUPS = [['all','all'],['arm','arm'],['head','head'],['wrist','wrist']];
+    var LOG_TYPES = [['info','info'],['success','success'],['warning','warn'],['error','error']];
+
+    // === Connection Blocks ===
+    Blockly.Blocks['robot_enable_torque'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('enable torque motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(260);
+        this.setTooltip('Enable torque for a single motor');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_enable_torque'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      return 'await Robot.setTorque(' + motor + ', true);\n';
+    };
+
+    Blockly.Blocks['robot_disable_torque'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('disable torque motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(260);
+        this.setTooltip('Disable torque for a single motor');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_disable_torque'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      return 'await Robot.setTorque(' + motor + ', false);\n';
+    };
+
+    Blockly.Blocks['robot_enable_all'] = {
+      init: function() {
+        this.appendDummyInput().appendField('enable all motors');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(260);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_enable_all'] = function(block) {
+      return 'await Robot.setTorqueMultiple(Robot.motorIds, true);\n';
+    };
+
+    Blockly.Blocks['robot_disable_all'] = {
+      init: function() {
+        this.appendDummyInput().appendField('disable all motors');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(260);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_disable_all'] = function(block) {
+      return 'await Robot.setTorqueMultiple(Robot.motorIds, false);\n';
+    };
+
+    Blockly.Blocks['robot_enable_group'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('enable')
+            .appendField(new Blockly.FieldDropdown(MOTOR_GROUPS), 'GROUP')
+            .appendField('motors');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(260);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_enable_group'] = function(block) {
+      var group = block.getFieldValue('GROUP');
+      return 'await Robot.setTorqueMultiple(Robot.motorGroups["' + group + '"], true);\n';
+    };
+
+    Blockly.Blocks['robot_disable_group'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('disable')
+            .appendField(new Blockly.FieldDropdown(MOTOR_GROUPS), 'GROUP')
+            .appendField('motors');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(260);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_disable_group'] = function(block) {
+      var group = block.getFieldValue('GROUP');
+      return 'await Robot.setTorqueMultiple(Robot.motorGroups["' + group + '"], false);\n';
+    };
+
+    // === Motor Blocks ===
+    Blockly.Blocks['robot_set_position'] = {
+      init: function() {
+        this.appendValueInput('POSITION').setCheck('Number')
+            .appendField('set motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
+            .appendField('to position');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(160);
+        this.setTooltip('Set motor to raw position (0-4095, center=2048)');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_set_position'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      var pos = Blockly.JavaScript.valueToCode(block, 'POSITION', Blockly.JavaScript.ORDER_ATOMIC) || '2048';
+      return 'await Robot.setPosition(' + motor + ', ' + pos + ');\n';
+    };
+
+    Blockly.Blocks['robot_set_degrees'] = {
+      init: function() {
+        this.appendValueInput('DEGREES').setCheck('Number')
+            .appendField('set motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
+            .appendField('to');
+        this.appendDummyInput().appendField('degrees');
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(160);
+        this.setTooltip('Set motor angle in degrees (0 = center)');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_set_degrees'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      var deg = Blockly.JavaScript.valueToCode(block, 'DEGREES', Blockly.JavaScript.ORDER_ATOMIC) || '0';
+      return 'await Robot.setPosition(' + motor + ', Robot.degreesToPosition(' + deg + '));\n';
+    };
+
+    Blockly.Blocks['robot_get_position'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('position of motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
+        this.setOutput(true, 'Number');
+        this.setColour(160);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_get_position'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      return ['await Robot.getPosition(' + motor + ')', Blockly.JavaScript.ORDER_AWAIT];
+    };
+
+    Blockly.Blocks['robot_get_degrees'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('angle of motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
+            .appendField('in degrees');
+        this.setOutput(true, 'Number');
+        this.setColour(160);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_get_degrees'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      return ['Robot.positionToDegrees(await Robot.getPosition(' + motor + '))', Blockly.JavaScript.ORDER_AWAIT];
+    };
+
+    Blockly.Blocks['robot_move_by'] = {
+      init: function() {
+        this.appendValueInput('AMOUNT').setCheck('Number')
+            .appendField('move motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
+            .appendField('by');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(160);
+        this.setTooltip('Move motor by relative amount');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_move_by'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      var amount = Blockly.JavaScript.valueToCode(block, 'AMOUNT', Blockly.JavaScript.ORDER_ATOMIC) || '0';
+      return 'await Robot.setPosition(' + motor + ', (await Robot.getPosition(' + motor + ')) + (' + amount + '));\n';
+    };
+
+    Blockly.Blocks['robot_move_smooth'] = {
+      init: function() {
+        this.appendValueInput('POSITION').setCheck('Number')
+            .appendField('smooth move motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
+            .appendField('to');
+        this.appendValueInput('DURATION').setCheck('Number').appendField('over');
+        this.appendDummyInput().appendField('seconds');
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(160);
+        this.setTooltip('Smoothly move motor to position over time');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_move_smooth'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      var pos = Blockly.JavaScript.valueToCode(block, 'POSITION', Blockly.JavaScript.ORDER_ATOMIC) || '2048';
+      var dur = Blockly.JavaScript.valueToCode(block, 'DURATION', Blockly.JavaScript.ORDER_ATOMIC) || '1';
+      return 'await Robot.moveSmooth(' + motor + ', ' + pos + ', ' + dur + ' * 1000);\n';
+    };
+
+    Blockly.Blocks['robot_set_speed'] = {
+      init: function() {
+        this.appendValueInput('SPEED').setCheck('Number')
+            .appendField('set motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
+            .appendField('speed to');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(160);
+        this.setTooltip('Set motor velocity limit (0-1023)');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_set_speed'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      var speed = Blockly.JavaScript.valueToCode(block, 'SPEED', Blockly.JavaScript.ORDER_ATOMIC) || '100';
+      // Address 112 = Profile Velocity
+      return 'await Robot.sendPacket(Robot.buildWritePacket(' + motor + ', 112, [' + speed + ' & 0xFF, (' + speed + ' >> 8) & 0xFF, (' + speed + ' >> 16) & 0xFF, (' + speed + ' >> 24) & 0xFF]), false);\n';
+    };
+
+    // === Multi-Motor Blocks ===
+    
+    Blockly.Blocks['robot_get_all_positions'] = {
+      init: function() {
+        this.appendDummyInput().appendField('get all motor positions as list');
+        this.setOutput(true, 'Array');
+        this.setColour(180);
+        this.setTooltip('Returns list of positions for motors 11-18 in order');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_get_all_positions'] = function(block) {
+      var code = '(await (async function() { var positions = []; for (var i = 0; i < Robot.motorIds.length; i++) { positions.push(await Robot.getPosition(Robot.motorIds[i])); } return positions; })())';
+      return [code, Blockly.JavaScript.ORDER_AWAIT];
+    };
+
+    Blockly.Blocks['robot_get_group_positions'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('get')
+            .appendField(new Blockly.FieldDropdown(MOTOR_GROUPS), 'GROUP')
+            .appendField('positions as list');
+        this.setOutput(true, 'Array');
+        this.setColour(180);
+        this.setTooltip('Returns list of positions for motor group');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_get_group_positions'] = function(block) {
+      var group = block.getFieldValue('GROUP');
+      var code = '(await (async function() { var ids = Robot.motorGroups["' + group + '"]; var positions = []; for (var i = 0; i < ids.length; i++) { positions.push(await Robot.getPosition(ids[i])); } return positions; })())';
+      return [code, Blockly.JavaScript.ORDER_AWAIT];
+    };
+
+    Blockly.Blocks['robot_set_positions_from_list'] = {
+      init: function() {
+        this.appendValueInput('POSITIONS').setCheck('Array')
+            .appendField('set all motor positions from list');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(180);
+        this.setTooltip('Set motors 11-18 from a list of 8 positions');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_set_positions_from_list'] = function(block) {
+      var positions = Blockly.JavaScript.valueToCode(block, 'POSITIONS', Blockly.JavaScript.ORDER_ATOMIC) || '[]';
+      return 'await Robot.setPositionMultiple(Robot.motorIds, ' + positions + ');\n';
+    };
+
+    Blockly.Blocks['robot_set_group_from_list'] = {
+      init: function() {
+        this.appendValueInput('POSITIONS').setCheck('Array')
+            .appendField('set')
+            .appendField(new Blockly.FieldDropdown(MOTOR_GROUPS), 'GROUP')
+            .appendField('positions from list');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(180);
+        this.setTooltip('Set motor group from a list of positions');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_set_group_from_list'] = function(block) {
+      var group = block.getFieldValue('GROUP');
+      var positions = Blockly.JavaScript.valueToCode(block, 'POSITIONS', Blockly.JavaScript.ORDER_ATOMIC) || '[]';
+      return 'await Robot.setPositionMultiple(Robot.motorGroups["' + group + '"], ' + positions + ');\n';
+    };
+
+    Blockly.Blocks['robot_set_multiple'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('set')
+            .appendField(new Blockly.FieldDropdown(MOTOR_GROUPS), 'GROUP')
+            .appendField('motors to center');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(180);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_set_multiple'] = function(block) {
+      var group = block.getFieldValue('GROUP');
+      return 'await Robot.setPositionMultiple(Robot.motorGroups["' + group + '"], Robot.motorGroups["' + group + '"].map(function() { return 2048; }));\n';
+    };
+
+    Blockly.Blocks['robot_home_position'] = {
+      init: function() {
+        this.appendDummyInput().appendField('move all motors to home');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(180);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_home_position'] = function(block) {
+      return 'await Robot.setPositionMultiple(Robot.motorIds, Robot.motorIds.map(function() { return 2048; }));\n';
+    };
+
+    Blockly.Blocks['robot_record_pose'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('record pose as')
+            .appendField(new Blockly.FieldTextInput('pose1'), 'NAME');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(180);
+        this.setTooltip('Save current positions as a named pose');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_record_pose'] = function(block) {
+      var name = block.getFieldValue('NAME');
+      return 'recordedPoses["' + name + '"] = await (async function() { var positions = []; for (var i = 0; i < Robot.motorIds.length; i++) { positions.push(await Robot.getPosition(Robot.motorIds[i])); } return positions; })(); logConsole("Recorded pose: ' + name + ' (" + recordedPoses["' + name + '"].length + " motors)", "success");\n';
+    };
+
+    Blockly.Blocks['robot_play_pose'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('play pose')
+            .appendField(new Blockly.FieldTextInput('pose1'), 'NAME');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(180);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_play_pose'] = function(block) {
+      var name = block.getFieldValue('NAME');
+      return 'if (recordedPoses["' + name + '"]) { await Robot.setPositionMultiple(Robot.motorIds, recordedPoses["' + name + '"]); } else { logConsole("Pose not found: ' + name + '", "error"); }\n';
+    };
+
+    Blockly.Blocks['robot_copy_pose'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('copy motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'FROM')
+            .appendField('to motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'TO');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(180);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_copy_pose'] = function(block) {
+      var from = block.getFieldValue('FROM');
+      var to = block.getFieldValue('TO');
+      return 'await Robot.setPosition(' + to + ', await Robot.getPosition(' + from + '));\n';
+    };
+
+    // === Kinematics Blocks ===
+    
+    var POSE_COMPONENTS = [['x','0'],['y','1'],['z','2'],['roll','3'],['pitch','4'],['yaw','5']];
+
+    Blockly.Blocks['robot_forward_kinematics'] = {
+      init: function() {
+        this.appendValueInput('JOINTS').setCheck('Array')
+            .appendField('forward kinematics of joints');
+        this.setOutput(true, 'Array');
+        this.setColour(290);
+        this.setTooltip('Convert joint positions list to [x, y, z, roll, pitch, yaw]');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_forward_kinematics'] = function(block) {
+      var joints = Blockly.JavaScript.valueToCode(block, 'JOINTS', Blockly.JavaScript.ORDER_ATOMIC) || '[]';
+      return ['callFK(' + joints + ')', Blockly.JavaScript.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['robot_inverse_kinematics'] = {
+      init: function() {
+        this.appendValueInput('POSE').setCheck('Array')
+            .appendField('inverse kinematics of pose');
+        this.setOutput(true, 'Array');
+        this.setColour(290);
+        this.setTooltip('Convert [x, y, z, roll, pitch, yaw] to joint positions list');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_inverse_kinematics'] = function(block) {
+      var pose = Blockly.JavaScript.valueToCode(block, 'POSE', Blockly.JavaScript.ORDER_ATOMIC) || '[0,0,0,0,0,0]';
+      return ['callIK(' + pose + ')', Blockly.JavaScript.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['robot_create_pose'] = {
+      init: function() {
+        this.appendDummyInput().appendField('create pose');
+        this.appendValueInput('X').setCheck('Number').appendField('x');
+        this.appendValueInput('Y').setCheck('Number').appendField('y');
+        this.appendValueInput('Z').setCheck('Number').appendField('z');
+        this.appendValueInput('ROLL').setCheck('Number').appendField('roll');
+        this.appendValueInput('PITCH').setCheck('Number').appendField('pitch');
+        this.appendValueInput('YAW').setCheck('Number').appendField('yaw');
+        this.setInputsInline(true);
+        this.setOutput(true, 'Array');
+        this.setColour(290);
+        this.setTooltip('Create a pose list [x, y, z, roll, pitch, yaw]');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_create_pose'] = function(block) {
+      var x = Blockly.JavaScript.valueToCode(block, 'X', Blockly.JavaScript.ORDER_ATOMIC) || '0';
+      var y = Blockly.JavaScript.valueToCode(block, 'Y', Blockly.JavaScript.ORDER_ATOMIC) || '0';
+      var z = Blockly.JavaScript.valueToCode(block, 'Z', Blockly.JavaScript.ORDER_ATOMIC) || '0';
+      var roll = Blockly.JavaScript.valueToCode(block, 'ROLL', Blockly.JavaScript.ORDER_ATOMIC) || '0';
+      var pitch = Blockly.JavaScript.valueToCode(block, 'PITCH', Blockly.JavaScript.ORDER_ATOMIC) || '0';
+      var yaw = Blockly.JavaScript.valueToCode(block, 'YAW', Blockly.JavaScript.ORDER_ATOMIC) || '0';
+      return ['[' + x + ', ' + y + ', ' + z + ', ' + roll + ', ' + pitch + ', ' + yaw + ']', Blockly.JavaScript.ORDER_ATOMIC];
+    };
+
+    Blockly.Blocks['robot_get_pose_component'] = {
+      init: function() {
+        this.appendValueInput('POSE').setCheck('Array')
+            .appendField('get')
+            .appendField(new Blockly.FieldDropdown(POSE_COMPONENTS), 'COMPONENT')
+            .appendField('from pose');
+        this.setOutput(true, 'Number');
+        this.setColour(290);
+        this.setTooltip('Get a single component from a pose list');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_get_pose_component'] = function(block) {
+      var component = block.getFieldValue('COMPONENT');
+      var pose = Blockly.JavaScript.valueToCode(block, 'POSE', Blockly.JavaScript.ORDER_MEMBER) || '[0,0,0,0,0,0]';
+      return ['(' + pose + ')[' + component + ']', Blockly.JavaScript.ORDER_MEMBER];
+    };
+
+    Blockly.Blocks['robot_move_to_pose'] = {
+      init: function() {
+        this.appendValueInput('POSE').setCheck('Array')
+            .appendField('move robot to pose');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(290);
+        this.setTooltip('Use inverse kinematics to move to [x,y,z,roll,pitch,yaw]');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_move_to_pose'] = function(block) {
+      var pose = Blockly.JavaScript.valueToCode(block, 'POSE', Blockly.JavaScript.ORDER_ATOMIC) || '[0,0,0,0,0,0]';
+      return 'var _joints = callIK(' + pose + '); await Robot.setPositionMultiple(Robot.motorIds, _joints);\n';
+    };
+
+    Blockly.Blocks['robot_get_current_pose'] = {
+      init: function() {
+        this.appendDummyInput().appendField('get current robot pose');
+        this.setOutput(true, 'Array');
+        this.setColour(290);
+        this.setTooltip('Get current [x, y, z, roll, pitch, yaw] using forward kinematics');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_get_current_pose'] = function(block) {
+      var code = '(await (async function() { var joints = []; for (var i = 0; i < Robot.motorIds.length; i++) { joints.push(await Robot.getPosition(Robot.motorIds[i])); } return callFK(joints); })())';
+      return [code, Blockly.JavaScript.ORDER_AWAIT];
+    };
+
+    Blockly.Blocks['robot_joints_to_degrees'] = {
+      init: function() {
+        this.appendValueInput('JOINTS').setCheck('Array')
+            .appendField('convert positions to degrees');
+        this.setOutput(true, 'Array');
+        this.setColour(290);
+        this.setTooltip('Convert raw motor positions to degrees');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_joints_to_degrees'] = function(block) {
+      var joints = Blockly.JavaScript.valueToCode(block, 'JOINTS', Blockly.JavaScript.ORDER_ATOMIC) || '[]';
+      return ['(' + joints + ').map(function(p) { return Robot.positionToDegrees(p); })', Blockly.JavaScript.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['robot_degrees_to_joints'] = {
+      init: function() {
+        this.appendValueInput('DEGREES').setCheck('Array')
+            .appendField('convert degrees to positions');
+        this.setOutput(true, 'Array');
+        this.setColour(290);
+        this.setTooltip('Convert degrees to raw motor positions');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_degrees_to_joints'] = function(block) {
+      var degrees = Blockly.JavaScript.valueToCode(block, 'DEGREES', Blockly.JavaScript.ORDER_ATOMIC) || '[]';
+      return ['(' + degrees + ').map(function(d) { return Robot.degreesToPosition(d); })', Blockly.JavaScript.ORDER_FUNCTION_CALL];
+    };
+
+    // === Sensing Blocks ===
+    Blockly.Blocks['robot_is_moving'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
+            .appendField('is moving');
+        this.setOutput(true, 'Boolean');
+        this.setColour(210);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_is_moving'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      // Check if position changed from cached value
+      return ['(Math.abs((await Robot.getPosition(' + motor + ')) - (motorPositionCache[' + motor + '] || 2048)) > 10)', Blockly.JavaScript.ORDER_AWAIT];
+    };
+
+    Blockly.Blocks['robot_wait_until_stopped'] = {
+      init: function() {
+        this.appendValueInput('TIMEOUT').setCheck('Number')
+            .appendField('wait until motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
+            .appendField('stopped, timeout');
+        this.appendDummyInput().appendField('seconds');
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(210);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_wait_until_stopped'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      var timeout = Blockly.JavaScript.valueToCode(block, 'TIMEOUT', Blockly.JavaScript.ORDER_ATOMIC) || '5';
+      return 'var _start = Date.now(); var _lastPos = await Robot.getPosition(' + motor + '); while (Date.now() - _start < ' + timeout + ' * 1000) { await new Promise(function(r) { setTimeout(r, 50); }); var _newPos = await Robot.getPosition(' + motor + '); if (Math.abs(_newPos - _lastPos) < 5) break; _lastPos = _newPos; }\n';
+    };
+
+    Blockly.Blocks['robot_get_load'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('load of motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
+        this.setOutput(true, 'Number');
+        this.setColour(210);
+        this.setTooltip('Get motor current load (-1000 to 1000)');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_get_load'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      // Address 126 = Present Load
+      return ['(await (async function() { var pkt = Robot.buildReadPacket(' + motor + ', 126, 2); var resp = await Robot.sendPacket(pkt, true, ' + motor + '); if (resp && resp.length >= 13) { var load = resp[9] | (resp[10] << 8); if (load > 32767) load -= 65536; return load; } return 0; })())', Blockly.JavaScript.ORDER_AWAIT];
+    };
+
+    Blockly.Blocks['robot_get_temperature'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('temperature of motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
+        this.setOutput(true, 'Number');
+        this.setColour(210);
+        this.setTooltip('Get motor temperature in °C');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_get_temperature'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      // Address 146 = Present Temperature
+      return ['(await (async function() { var pkt = Robot.buildReadPacket(' + motor + ', 146, 1); var resp = await Robot.sendPacket(pkt, true, ' + motor + '); if (resp && resp.length >= 12) { return resp[9]; } return 0; })())', Blockly.JavaScript.ORDER_AWAIT];
+    };
+
+    Blockly.Blocks['robot_position_in_range'] = {
+      init: function() {
+        this.appendValueInput('MIN').setCheck('Number')
+            .appendField('motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
+            .appendField('position between');
+        this.appendValueInput('MAX').setCheck('Number').appendField('and');
+        this.setInputsInline(true);
+        this.setOutput(true, 'Boolean');
+        this.setColour(210);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_position_in_range'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      var min = Blockly.JavaScript.valueToCode(block, 'MIN', Blockly.JavaScript.ORDER_ATOMIC) || '0';
+      var max = Blockly.JavaScript.valueToCode(block, 'MAX', Blockly.JavaScript.ORDER_ATOMIC) || '4095';
+      return ['(function() { var p = motorPositionCache[' + motor + '] || 2048; return p >= ' + min + ' && p <= ' + max + '; })()', Blockly.JavaScript.ORDER_FUNCTION_CALL];
+    };
+
+    // === Timing Blocks ===
+    Blockly.Blocks['robot_wait'] = {
+      init: function() {
+        this.appendValueInput('TIME').setCheck('Number').appendField('wait');
+        this.appendDummyInput().appendField('seconds');
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(120);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_wait'] = function(block) {
+      var time = Blockly.JavaScript.valueToCode(block, 'TIME', Blockly.JavaScript.ORDER_ATOMIC) || '1';
+      return 'await new Promise(function(r) { setTimeout(r, ' + time + ' * 1000); });\n';
+    };
+
+    Blockly.Blocks['robot_wait_ms'] = {
+      init: function() {
+        this.appendValueInput('TIME').setCheck('Number').appendField('wait');
+        this.appendDummyInput().appendField('milliseconds');
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(120);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_wait_ms'] = function(block) {
+      var time = Blockly.JavaScript.valueToCode(block, 'TIME', Blockly.JavaScript.ORDER_ATOMIC) || '100';
+      return 'await new Promise(function(r) { setTimeout(r, ' + time + '); });\n';
+    };
+
+    Blockly.Blocks['robot_get_time'] = {
+      init: function() {
+        this.appendDummyInput().appendField('current time (ms)');
+        this.setOutput(true, 'Number');
+        this.setColour(120);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_get_time'] = function(block) {
+      return ['Date.now()', Blockly.JavaScript.ORDER_FUNCTION_CALL];
+    };
+
+    Blockly.Blocks['robot_reset_timer'] = {
+      init: function() {
+        this.appendDummyInput().appendField('reset timer');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(120);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_reset_timer'] = function(block) {
+      return 'programTimer = Date.now();\n';
+    };
+
+    Blockly.Blocks['robot_timer_value'] = {
+      init: function() {
+        this.appendDummyInput().appendField('timer (seconds)');
+        this.setOutput(true, 'Number');
+        this.setColour(120);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_timer_value'] = function(block) {
+      return ['((Date.now() - programTimer) / 1000)', Blockly.JavaScript.ORDER_DIVISION];
+    };
+
+    // === Output Blocks ===
+    Blockly.Blocks['robot_log'] = {
+      init: function() {
+        this.appendValueInput('MESSAGE').appendField('log');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(60);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_log'] = function(block) {
+      var msg = Blockly.JavaScript.valueToCode(block, 'MESSAGE', Blockly.JavaScript.ORDER_ATOMIC) || '""';
+      return 'logConsole(' + msg + ');\n';
+    };
+
+    Blockly.Blocks['robot_log_position'] = {
+      init: function() {
+        this.appendDummyInput()
+            .appendField('log position of motor')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(60);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_log_position'] = function(block) {
+      var motor = block.getFieldValue('MOTOR');
+      return 'logConsole("Motor ' + motor + ': " + (await Robot.getPosition(' + motor + ')) + " (" + Robot.positionToDegrees(await Robot.getPosition(' + motor + ')).toFixed(1) + "°)", "info");\n';
+    };
+
+    Blockly.Blocks['robot_log_type'] = {
+      init: function() {
+        this.appendValueInput('MESSAGE').appendField('log');
+        this.appendDummyInput()
+            .appendField('as')
+            .appendField(new Blockly.FieldDropdown(LOG_TYPES), 'TYPE');
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(60);
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_log_type'] = function(block) {
+      var msg = Blockly.JavaScript.valueToCode(block, 'MESSAGE', Blockly.JavaScript.ORDER_ATOMIC) || '""';
+      var type = block.getFieldValue('TYPE');
+      return 'logConsole(' + msg + ', "' + type + '");\n';
+    };
+
+    // ========== Workspace ==========
+    var workspace = Blockly.inject('blocklyDiv', {
+      toolbox: document.getElementById('toolbox'),
+      grid: { spacing: 20, length: 3, colour: '#2a2a4a', snap: true },
+      zoom: { controls: true, startScale: 1.0, maxScale: 2, minScale: 0.5, scaleSpeed: 1.1 },
+      trashcan: true,
+      move: { scrollbars: true, drag: true, wheel: true }
+    });
+
+    workspace.addChangeListener(function() {
+      var code = Blockly.JavaScript.workspaceToCode(workspace);
+      document.getElementById('codeOutput').textContent = code || '// Drag blocks here...';
+    });
+
+    logConsole('Ready! Connect to your robot to start.', 'info');
+    logConsole('Tip: Use Save/Load to keep your programs', 'info');
+  </script>
+</body>
+</html>

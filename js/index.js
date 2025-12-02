@@ -1,4 +1,4 @@
-import { fk, connect, read_websocket, torque_off, torque_on, record, replay, stop } from "../pkg/index.js";
+import { fk, connect, read_websocket, torque_off, torque_on, record, replay, stop, forward_kinematics, inverse_kinematics } from "../pkg/index.js";
 
 import("../pkg/index.js").catch(console.error);
 
@@ -13,3 +13,5 @@ window.read_pose = fk;
 window.replay = replay;
 window.record = record;
 window.stop = stop;
+window.forward_kinematics = forward_kinematics;
+window.inverse_kinematics = inverse_kinematics;

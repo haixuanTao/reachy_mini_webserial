@@ -15,6 +15,7 @@ use futures_util::{AsyncReadExt, SinkExt};
 use futures_util::{StreamExt, TryStreamExt};
 use gloo::net::websocket::futures::WebSocket;
 use gloo::net::websocket::Message;
+use gloo::utils::{document, window};
 use js_sys::{Boolean, Promise};
 use serde::Deserialize;
 
@@ -52,7 +53,9 @@ pub fn main_js() -> Result<(), JsValue> {
 
     // Your code goes here!
     console::log_1(&JsValue::from_str("Hello world!"));
-
+    document()
+        .get_element_by_id("toggle-connect")
+        .map(|el| el.remove_attribute("disabled").unwrap_or_default());
     Ok(())
 }
 
@@ -397,6 +400,127 @@ pub async fn fk(duration: Option<f64>) -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
+pub fn forward_kinematics(angles_deg: Vec<f32>) -> Result<Vec<f32>, JsValue> {
+    let motors: Vec<Motor> =
+        serde_json::from_str(&MOTOR_JSON).expect("JSON was not well-formatted");
+    let mut kinematics = Kinematics::new(0.038, 0.09);
+
+    for motor in motors {
+        let branch_position = nalgebra::Vector3::new(
+            motor.branch_position[0],
+            motor.branch_position[1],
+            motor.branch_position[2],
+        );
+        let T_motor_world = nalgebra::Matrix4::new(
+            motor.T_motor_world[0][0],
+            motor.T_motor_world[0][1],
+            motor.T_motor_world[0][2],
+            motor.T_motor_world[0][3],
+            motor.T_motor_world[1][0],
+            motor.T_motor_world[1][1],
+            motor.T_motor_world[1][2],
+            motor.T_motor_world[1][3],
+            motor.T_motor_world[2][0],
+            motor.T_motor_world[2][1],
+            motor.T_motor_world[2][2],
+            motor.T_motor_world[2][3],
+            motor.T_motor_world[3][0],
+            motor.T_motor_world[3][1],
+            motor.T_motor_world[3][2],
+            motor.T_motor_world[3][3],
+        );
+        let solution = if motor.solution != 0.0 { 1.0 } else { -1.0 };
+        kinematics.add_branch(
+            branch_position,
+            T_motor_world.try_inverse().unwrap(),
+            solution,
+        );
+    }
+    let angles_rad: Vec<f32> = angles_deg.iter().map(|&deg| deg.to_radians()).collect();
+    let t = kinematics.forward_kinematics(angles_rad, None);
+
+    // remove head_z_offset
+    let x = -t[(0, 3)] * 1000.; // Reverse X axis because don't know
+    let y = t[(1, 3)] * 1000.;
+    let z = t[(2, 3)] * 1000.;
+
+    let r = t.fixed_view::<3, 3>(0, 0);
+    // Euler XYZ: Roll (X), Pitch (Y), Yaw (Z)
+    let pitch = (-r[(2, 0)]).asin();
+
+    let (roll, yaw) = if pitch.cos().abs() > 1e-6 {
+        // Normal case
+        (
+            r[(2, 1)].atan2(r[(2, 2)]), // roll
+            r[(1, 0)].atan2(r[(0, 0)]), // yaw
+        )
+    } else {
+        // Gimbal lock
+        ((-r[(1, 2)]).atan2(r[(1, 1)]), 0.0)
+    };
+
+    // Convert to degrees
+    let roll_deg = roll.to_degrees();
+    let pitch_deg = pitch.to_degrees();
+    let yaw_deg = yaw.to_degrees();
+    Ok(vec![x, y, z, roll_deg, pitch_deg, yaw_deg])
+}
+
+#[wasm_bindgen]
+pub fn inverse_kinematics(xyzrpy: Vec<f32>) -> Result<Vec<f32>, JsValue> {
+    let motors: Vec<Motor> =
+        serde_json::from_str(&MOTOR_JSON).expect("JSON was not well-formatted");
+    let mut kinematics = Kinematics::new(0.038, 0.09);
+
+    for motor in motors {
+        let branch_position = nalgebra::Vector3::new(
+            motor.branch_position[0],
+            motor.branch_position[1],
+            motor.branch_position[2],
+        );
+        let T_motor_world = nalgebra::Matrix4::new(
+            motor.T_motor_world[0][0],
+            motor.T_motor_world[0][1],
+            motor.T_motor_world[0][2],
+            motor.T_motor_world[0][3],
+            motor.T_motor_world[1][0],
+            motor.T_motor_world[1][1],
+            motor.T_motor_world[1][2],
+            motor.T_motor_world[1][3],
+            motor.T_motor_world[2][0],
+            motor.T_motor_world[2][1],
+            motor.T_motor_world[2][2],
+            motor.T_motor_world[2][3],
+            motor.T_motor_world[3][0],
+            motor.T_motor_world[3][1],
+            motor.T_motor_world[3][2],
+            motor.T_motor_world[3][3],
+        );
+        let solution = if motor.solution != 0.0 { 1.0 } else { -1.0 };
+        kinematics.add_branch(
+            branch_position,
+            T_motor_world.try_inverse().unwrap(),
+            solution,
+        );
+    }
+    let t = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(
+        xyzrpy[0] / -1000.0,
+        xyzrpy[1] / 1000.0,
+        xyzrpy[2] / 1000.0,
+    ));
+    let roll_rad = xyzrpy[3].to_radians();
+    let pitch_rad = xyzrpy[4].to_radians();
+    let yaw_rad = xyzrpy[5].to_radians();
+    let t =
+        nalgebra::Matrix4::new_rotation(nalgebra::Vector3::new(roll_rad, pitch_rad, yaw_rad)) * t;
+    let joints = kinematics.inverse_kinematics(t, None);
+
+    Ok(joints)
+}
+
+#[wasm_bindgen]
+/// The above code is a multi-line comment in Rust. It is used to add comments or documentation to the
+/// code that will not be executed by the compiler.
 pub async fn replay() -> Result<(), JsValue> {
     web_sys::console::log_1(&format!("torque? {}", 0).into());
     torque_on().await?;
