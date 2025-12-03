@@ -190,29 +190,27 @@
       <block type="robot_disable_torque"></block>
       <block type="robot_enable_all"></block>
       <block type="robot_disable_all"></block>
-      <block type="robot_enable_group"></block>
-      <block type="robot_disable_group"></block>
       <block type="robot_check_motors"></block>
       <block type="robot_ping_motor"></block>
       <block type="robot_reboot_motor"></block>
       <block type="robot_reboot_all"></block>
     </category>
     
-    <!-- Motor Control -->
-    <category name="🦾 Motors" colour="160">
-      <block type="robot_set_position">
-        <value name="POSITION"><shadow type="math_number"><field name="NUM">2048</field></shadow></value>
+    <!-- Single Joint -->
+    <category name="🦾 Single Joint" colour="160">
+      <block type="robot_set_joint">
+        <value name="JOINT"><shadow type="math_number"><field name="NUM">2048</field></shadow></value>
       </block>
       <block type="robot_set_degrees">
         <value name="DEGREES"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
       </block>
-      <block type="robot_get_position"></block>
+      <block type="robot_get_joint"></block>
       <block type="robot_get_degrees"></block>
       <block type="robot_move_by">
         <value name="AMOUNT"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
       </block>
       <block type="robot_move_smooth">
-        <value name="POSITION"><shadow type="math_number"><field name="NUM">2048</field></shadow></value>
+        <value name="JOINT"><shadow type="math_number"><field name="NUM">2048</field></shadow></value>
         <value name="DURATION"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
       </block>
       <block type="robot_set_speed">
@@ -220,24 +218,18 @@
       </block>
     </category>
     
-    <!-- Multi-Motor -->
-    <category name="🔗 Multi-Motor" colour="180">
-      <block type="robot_get_all_positions"></block>
-      <block type="robot_get_group_positions"></block>
-      <block type="robot_set_positions_from_list"></block>
-      <block type="robot_set_group_from_list"></block>
-      <block type="robot_set_multiple"></block>
-      <block type="robot_copy_pose"></block>
-      <block type="robot_home_position"></block>
-      <block type="robot_record_pose"></block>
-      <block type="robot_play_pose"></block>
+    <!-- All Joints -->
+    <category name="🔗 All Joints" colour="180">
+      <block type="robot_get_all_joints"></block>
+      <block type="robot_set_all_joints"></block>
+      <block type="robot_copy_joint"></block>
     </category>
     
     <!-- Kinematics -->
     <category name="🦿 Kinematics" colour="290">
-      <block type="robot_forward_kinematics"></block>
-      <block type="robot_inverse_kinematics"></block>
-      <block type="robot_create_pose">
+      <block type="robot_joints_to_coordinates"></block>
+      <block type="robot_coordinates_to_joints"></block>
+      <block type="robot_create_coordinates">
         <value name="X"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
         <value name="Y"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
         <value name="Z"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
@@ -245,9 +237,8 @@
         <value name="PITCH"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
         <value name="YAW"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
       </block>
-      <block type="robot_get_pose_component"></block>
-      <block type="robot_move_to_pose"></block>
-      <block type="robot_get_current_pose"></block>
+      <block type="robot_get_coordinate"></block>
+      <block type="robot_get_current_coordinates"></block>
       <block type="robot_joints_to_degrees"></block>
       <block type="robot_degrees_to_joints"></block>
     </category>
@@ -260,7 +251,7 @@
       </block>
       <block type="robot_get_load"></block>
       <block type="robot_get_temperature"></block>
-      <block type="robot_position_in_range">
+      <block type="robot_joint_in_range">
         <value name="MIN"><shadow type="math_number"><field name="NUM">1800</field></shadow></value>
         <value name="MAX"><shadow type="math_number"><field name="NUM">2200</field></shadow></value>
       </block>
@@ -284,10 +275,13 @@
       <block type="robot_log">
         <value name="MESSAGE"><shadow type="text"><field name="TEXT">Hello!</field></shadow></value>
       </block>
-      <block type="robot_log_position"></block>
+      <block type="robot_log_joint"></block>
       <block type="robot_log_type"></block>
+      <block type="robot_alert">
+        <value name="MESSAGE"><shadow type="text"><field name="TEXT">Hello!</field></shadow></value>
+      </block>
     </category>
-    
+
     <sep></sep>
     
     <!-- Logic (Built-in) -->
@@ -400,15 +394,15 @@
 
     // ========== Kinematics Functions ==========
     // These call the WASM functions attached to window
-    // Expected: window.forward_kinematics(joints) -> [x, y, z, roll, pitch, yaw]
-    // Expected: window.inverse_kinematics(pose) -> [j1, j2, ..., j8]
-    
+    // joints -> coordinates: window.forward_kinematics(joints) -> [x, y, z, roll, pitch, yaw]
+    // coordinates -> joints: window.inverse_kinematics(coordinates) -> [j1, j2, ..., j8]
+
     function callFK(joints) {
       return window.forward_kinematics(joints);
     }
 
-    function callIK(pose) {
-      return window.inverse_kinematics(pose);
+    function callIK(coordinates) {
+      return window.inverse_kinematics(coordinates);
     }
 
     // ========== Console Logging ==========
@@ -440,12 +434,6 @@
       connected: false,
       readBuffer: [],
       motorIds: [11, 12, 13, 14, 15, 16, 17, 18],
-      motorGroups: {
-        'all': [11, 12, 13, 14, 15, 16, 17, 18],
-        'arm': [11, 12, 13, 14, 15],
-        'head': [17, 18],
-        'wrist': [16]
-      },
 
       CRC_TABLE: [
         0x0000, 0x8005, 0x800F, 0x000A, 0x801B, 0x001E, 0x0014, 0x8011,
@@ -873,6 +861,97 @@
 
       positionToDegrees: function(pos) {
         return (pos - 2048) * 360 / 4096;
+      },
+
+      // Max speed: 1 rotation per second = 4096 steps/sec (360° per second)
+      maxStepsPerSecond: 4096,
+      stepIntervalMs: 20, // Send commands every 20ms
+
+      // Speed-limited single motor move
+      setPositionLimited: function(id, targetPos) {
+        var self = this;
+
+        // Get current position - read from motor if not cached
+        function getStartPos() {
+          if (motorPositionCache[id] !== undefined) {
+            return Promise.resolve(motorPositionCache[id]);
+          }
+          return self.getPosition(id);
+        }
+
+        return getStartPos().then(function(startPos) {
+          var delta = Math.abs(targetPos - startPos);
+
+          // Calculate duration based on max speed
+          var durationMs = (delta / self.maxStepsPerSecond) * 1000;
+          if (durationMs < 50) {
+            // Very small move, just do it directly
+            return self.setPosition(id, targetPos);
+          }
+
+          var steps = Math.max(2, Math.floor(durationMs / self.stepIntervalMs));
+          var stepDelay = durationMs / steps;
+          var direction = targetPos > startPos ? 1 : -1;
+          var stepSize = delta / steps;
+
+          function doStep(step) {
+            if (step > steps || stopRequested) return Promise.resolve();
+            var pos = Math.round(startPos + direction * stepSize * step);
+            return self.setPosition(id, pos).then(function() {
+              return new Promise(function(r) { setTimeout(r, stepDelay); });
+            }).then(function() {
+              return doStep(step + 1);
+            });
+          }
+          return doStep(1);
+        });
+      },
+
+      // Speed-limited multi-motor move (all motors move together, speed limited by slowest)
+      setPositionMultipleLimited: function(ids, positions) {
+        var self = this;
+
+        // First, get all current positions (read from motor if not cached)
+        var positionPromises = ids.map(function(id) {
+          if (motorPositionCache[id] !== undefined) {
+            return Promise.resolve(motorPositionCache[id]);
+          }
+          return self.getPosition(id);
+        });
+
+        return Promise.all(positionPromises).then(function(startPositions) {
+          // Calculate deltas and find max
+          var maxDelta = 0;
+          for (var i = 0; i < ids.length; i++) {
+            var delta = Math.abs(positions[i] - startPositions[i]);
+            if (delta > maxDelta) maxDelta = delta;
+          }
+
+          // Calculate duration based on the motor that needs to move the most
+          var durationMs = (maxDelta / self.maxStepsPerSecond) * 1000;
+          if (durationMs < 50) {
+            // Very small move, just do it directly
+            return self.setPositionMultiple(ids, positions);
+          }
+
+          var steps = Math.max(2, Math.floor(durationMs / self.stepIntervalMs));
+          var stepDelay = durationMs / steps;
+
+          function doStep(step) {
+            if (step > steps || stopRequested) return Promise.resolve();
+            var t = step / steps;
+            var currentPositions = [];
+            for (var i = 0; i < ids.length; i++) {
+              currentPositions.push(Math.round(startPositions[i] + (positions[i] - startPositions[i]) * t));
+            }
+            return self.setPositionMultiple(ids, currentPositions).then(function() {
+              return new Promise(function(r) { setTimeout(r, stepDelay); });
+            }).then(function() {
+              return doStep(step + 1);
+            });
+          }
+          return doStep(1);
+        });
       }
     };
 
@@ -1025,20 +1104,19 @@
     }
 
     // ========== Custom Blocks ==========
-    var MOTORS = [['11','11'],['12','12'],['13','13'],['14','14'],['15','15'],['16','16'],['17','17'],['18','18']];
-    var MOTOR_GROUPS = [['all','all'],['arm','arm'],['head','head'],['wrist','wrist']];
+    var MOTORS = [['17','17'],['18','18'],['11','11'],['12','12'],['13','13'],['14','14'],['15','15'],['16','16']];
     var LOG_TYPES = [['info','info'],['success','success'],['warning','warn'],['error','error']];
 
     // === Connection Blocks ===
     Blockly.Blocks['robot_enable_torque'] = {
       init: function() {
         this.appendDummyInput()
-            .appendField('enable torque motor')
+            .appendField('enable torque joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(260);
-        this.setTooltip('Enable torque for a single motor');
+        this.setTooltip('Enable torque for a single joint');
       }
     };
     Blockly.JavaScript.forBlock['robot_enable_torque'] = function(block) {
@@ -1049,12 +1127,12 @@
     Blockly.Blocks['robot_disable_torque'] = {
       init: function() {
         this.appendDummyInput()
-            .appendField('disable torque motor')
+            .appendField('disable torque joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(260);
-        this.setTooltip('Disable torque for a single motor');
+        this.setTooltip('Disable torque for a single joint');
       }
     };
     Blockly.JavaScript.forBlock['robot_disable_torque'] = function(block) {
@@ -1064,7 +1142,7 @@
 
     Blockly.Blocks['robot_enable_all'] = {
       init: function() {
-        this.appendDummyInput().appendField('enable all motors');
+        this.appendDummyInput().appendField('enable all joints');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(260);
@@ -1076,7 +1154,7 @@
 
     Blockly.Blocks['robot_disable_all'] = {
       init: function() {
-        this.appendDummyInput().appendField('disable all motors');
+        this.appendDummyInput().appendField('disable all joints');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(260);
@@ -1086,60 +1164,28 @@
       return 'await Robot.setTorqueMultiple(Robot.motorIds, false);\n';
     };
 
-    Blockly.Blocks['robot_enable_group'] = {
-      init: function() {
-        this.appendDummyInput()
-            .appendField('enable')
-            .appendField(new Blockly.FieldDropdown(MOTOR_GROUPS), 'GROUP')
-            .appendField('motors');
-        this.setPreviousStatement(true, null);
-        this.setNextStatement(true, null);
-        this.setColour(260);
-      }
-    };
-    Blockly.JavaScript.forBlock['robot_enable_group'] = function(block) {
-      var group = block.getFieldValue('GROUP');
-      return 'await Robot.setTorqueMultiple(Robot.motorGroups["' + group + '"], true);\n';
-    };
-
-    Blockly.Blocks['robot_disable_group'] = {
-      init: function() {
-        this.appendDummyInput()
-            .appendField('disable')
-            .appendField(new Blockly.FieldDropdown(MOTOR_GROUPS), 'GROUP')
-            .appendField('motors');
-        this.setPreviousStatement(true, null);
-        this.setNextStatement(true, null);
-        this.setColour(260);
-      }
-    };
-    Blockly.JavaScript.forBlock['robot_disable_group'] = function(block) {
-      var group = block.getFieldValue('GROUP');
-      return 'await Robot.setTorqueMultiple(Robot.motorGroups["' + group + '"], false);\n';
-    };
-
     Blockly.Blocks['robot_check_motors'] = {
       init: function() {
-        this.appendDummyInput().appendField('check all motors');
+        this.appendDummyInput().appendField('check all joints');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(260);
-        this.setTooltip('Ping all motors and log their status');
+        this.setTooltip('Ping all joints, read positions, and log their status');
       }
     };
     Blockly.JavaScript.forBlock['robot_check_motors'] = function(block) {
-      return 'await (async function() { var results = await Robot.checkAllMotors(); var ok = [], failed = []; for (var id in results) { if (results[id].ok) ok.push(id); else failed.push(id); } if (failed.length === 0) { logConsole("All " + ok.length + " motors OK", "success"); } else { logConsole("OK: " + ok.join(", ") + " | FAILED: " + failed.join(", "), "error"); } })();\n';
+      return 'await (async function() { var results = await Robot.checkAllMotors(); var ok = [], failed = []; for (var id in results) { if (results[id].ok) ok.push(id); else failed.push(id); } if (failed.length === 0) { logConsole("All " + ok.length + " joints OK", "success"); for (var i = 0; i < Robot.motorIds.length; i++) { var id = Robot.motorIds[i]; var pos = await Robot.getPosition(id); var deg = Robot.positionToDegrees(pos).toFixed(1); logConsole("Joint " + id + ": " + pos + " (" + deg + "°)", "info"); } } else { logConsole("OK: " + ok.join(", ") + " | FAILED: " + failed.join(", "), "error"); } })();\n';
     };
 
     Blockly.Blocks['robot_ping_motor'] = {
       init: function() {
         this.appendDummyInput()
-            .appendField('motor')
+            .appendField('joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
             .appendField('is responding');
         this.setOutput(true, 'Boolean');
         this.setColour(260);
-        this.setTooltip('Check if a motor responds to ping');
+        this.setTooltip('Check if a joint responds to ping');
       }
     };
     Blockly.JavaScript.forBlock['robot_ping_motor'] = function(block) {
@@ -1150,12 +1196,12 @@
     Blockly.Blocks['robot_reboot_motor'] = {
       init: function() {
         this.appendDummyInput()
-            .appendField('reboot motor')
+            .appendField('reboot joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(260);
-        this.setTooltip('Reboot motor to clear hardware errors (voltage, overtemp)');
+        this.setTooltip('Reboot joint to clear hardware errors');
       }
     };
     Blockly.JavaScript.forBlock['robot_reboot_motor'] = function(block) {
@@ -1165,40 +1211,40 @@
 
     Blockly.Blocks['robot_reboot_all'] = {
       init: function() {
-        this.appendDummyInput().appendField('reboot all motors');
+        this.appendDummyInput().appendField('reboot all joints');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(260);
-        this.setTooltip('Reboot all motors to clear hardware errors');
+        this.setTooltip('Reboot all joints to clear hardware errors');
       }
     };
     Blockly.JavaScript.forBlock['robot_reboot_all'] = function(block) {
       return 'await Robot.rebootAllMotors();\n';
     };
 
-    // === Motor Blocks ===
-    Blockly.Blocks['robot_set_position'] = {
+    // === Joint Blocks ===
+    Blockly.Blocks['robot_set_joint'] = {
       init: function() {
-        this.appendValueInput('POSITION').setCheck('Number')
-            .appendField('set motor')
+        this.appendValueInput('JOINT').setCheck('Number')
+            .appendField('set joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
-            .appendField('to position');
+            .appendField('to');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(160);
-        this.setTooltip('Set motor to raw position (0-4095, center=2048)');
+        this.setTooltip('Set joint value (0-4095, center=2048)');
       }
     };
-    Blockly.JavaScript.forBlock['robot_set_position'] = function(block) {
+    Blockly.JavaScript.forBlock['robot_set_joint'] = function(block) {
       var motor = block.getFieldValue('MOTOR');
-      var pos = Blockly.JavaScript.valueToCode(block, 'POSITION', Blockly.JavaScript.ORDER_ATOMIC) || '2048';
-      return 'await Robot.setPosition(' + motor + ', ' + pos + ');\n';
+      var joint = Blockly.JavaScript.valueToCode(block, 'JOINT', Blockly.JavaScript.ORDER_ATOMIC) || '2048';
+      return 'await Robot.setPositionLimited(' + motor + ', ' + joint + ');\n';
     };
 
     Blockly.Blocks['robot_set_degrees'] = {
       init: function() {
         this.appendValueInput('DEGREES').setCheck('Number')
-            .appendField('set motor')
+            .appendField('set joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
             .appendField('to');
         this.appendDummyInput().appendField('degrees');
@@ -1206,25 +1252,25 @@
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(160);
-        this.setTooltip('Set motor angle in degrees (0 = center)');
+        this.setTooltip('Set joint angle in degrees (0 = center)');
       }
     };
     Blockly.JavaScript.forBlock['robot_set_degrees'] = function(block) {
       var motor = block.getFieldValue('MOTOR');
       var deg = Blockly.JavaScript.valueToCode(block, 'DEGREES', Blockly.JavaScript.ORDER_ATOMIC) || '0';
-      return 'await Robot.setPosition(' + motor + ', Robot.degreesToPosition(' + deg + '));\n';
+      return 'await Robot.setPositionLimited(' + motor + ', Robot.degreesToPosition(' + deg + '));\n';
     };
 
-    Blockly.Blocks['robot_get_position'] = {
+    Blockly.Blocks['robot_get_joint'] = {
       init: function() {
         this.appendDummyInput()
-            .appendField('position of motor')
+            .appendField('value of joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
         this.setOutput(true, 'Number');
         this.setColour(160);
       }
     };
-    Blockly.JavaScript.forBlock['robot_get_position'] = function(block) {
+    Blockly.JavaScript.forBlock['robot_get_joint'] = function(block) {
       var motor = block.getFieldValue('MOTOR');
       return ['await Robot.getPosition(' + motor + ')', Blockly.JavaScript.ORDER_AWAIT];
     };
@@ -1232,9 +1278,8 @@
     Blockly.Blocks['robot_get_degrees'] = {
       init: function() {
         this.appendDummyInput()
-            .appendField('angle of motor')
-            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
-            .appendField('in degrees');
+            .appendField('degrees of joint')
+            .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
         this.setOutput(true, 'Number');
         this.setColour(160);
       }
@@ -1247,25 +1292,25 @@
     Blockly.Blocks['robot_move_by'] = {
       init: function() {
         this.appendValueInput('AMOUNT').setCheck('Number')
-            .appendField('move motor')
+            .appendField('move joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
             .appendField('by');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(160);
-        this.setTooltip('Move motor by relative amount');
+        this.setTooltip('Move joint by relative amount');
       }
     };
     Blockly.JavaScript.forBlock['robot_move_by'] = function(block) {
       var motor = block.getFieldValue('MOTOR');
       var amount = Blockly.JavaScript.valueToCode(block, 'AMOUNT', Blockly.JavaScript.ORDER_ATOMIC) || '0';
-      return 'await Robot.setPosition(' + motor + ', (await Robot.getPosition(' + motor + ')) + (' + amount + '));\n';
+      return 'await Robot.setPositionLimited(' + motor + ', (await Robot.getPosition(' + motor + ')) + (' + amount + '));\n';
     };
 
     Blockly.Blocks['robot_move_smooth'] = {
       init: function() {
-        this.appendValueInput('POSITION').setCheck('Number')
-            .appendField('smooth move motor')
+        this.appendValueInput('JOINT').setCheck('Number')
+            .appendField('smooth move joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
             .appendField('to');
         this.appendValueInput('DURATION').setCheck('Number').appendField('over');
@@ -1274,26 +1319,26 @@
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(160);
-        this.setTooltip('Smoothly move motor to position over time');
+        this.setTooltip('Smoothly move joint to value over time');
       }
     };
     Blockly.JavaScript.forBlock['robot_move_smooth'] = function(block) {
       var motor = block.getFieldValue('MOTOR');
-      var pos = Blockly.JavaScript.valueToCode(block, 'POSITION', Blockly.JavaScript.ORDER_ATOMIC) || '2048';
+      var joint = Blockly.JavaScript.valueToCode(block, 'JOINT', Blockly.JavaScript.ORDER_ATOMIC) || '2048';
       var dur = Blockly.JavaScript.valueToCode(block, 'DURATION', Blockly.JavaScript.ORDER_ATOMIC) || '1';
-      return 'await Robot.moveSmooth(' + motor + ', ' + pos + ', ' + dur + ' * 1000);\n';
+      return 'await Robot.moveSmooth(' + motor + ', ' + joint + ', ' + dur + ' * 1000);\n';
     };
 
     Blockly.Blocks['robot_set_speed'] = {
       init: function() {
         this.appendValueInput('SPEED').setCheck('Number')
-            .appendField('set motor')
+            .appendField('set joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
             .appendField('speed to');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(160);
-        this.setTooltip('Set motor velocity limit (0-1023)');
+        this.setTooltip('Set joint velocity limit (0-1023)');
       }
     };
     Blockly.JavaScript.forBlock['robot_set_speed'] = function(block) {
@@ -1305,181 +1350,88 @@
 
     // === Multi-Motor Blocks ===
     
-    Blockly.Blocks['robot_get_all_positions'] = {
+    Blockly.Blocks['robot_get_all_joints'] = {
       init: function() {
-        this.appendDummyInput().appendField('get all motor positions as list');
+        this.appendDummyInput().appendField('get all joints as list');
         this.setOutput(true, 'Array');
         this.setColour(180);
-        this.setTooltip('Returns list of positions for motors 11-18 in order');
+        this.setTooltip('Returns list of joint values for motors 11-18');
       }
     };
-    Blockly.JavaScript.forBlock['robot_get_all_positions'] = function(block) {
-      var code = '(await (async function() { var positions = []; for (var i = 0; i < Robot.motorIds.length; i++) { positions.push(await Robot.getPosition(Robot.motorIds[i])); } return positions; })())';
+    Blockly.JavaScript.forBlock['robot_get_all_joints'] = function(block) {
+      var code = '(await (async function() { var joints = []; for (var i = 0; i < Robot.motorIds.length; i++) { joints.push(await Robot.getPosition(Robot.motorIds[i])); } return joints; })())';
       return [code, Blockly.JavaScript.ORDER_AWAIT];
     };
 
-    Blockly.Blocks['robot_get_group_positions'] = {
+    Blockly.Blocks['robot_set_all_joints'] = {
+      init: function() {
+        this.appendValueInput('JOINTS').setCheck('Array')
+            .appendField('set all joints from list');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(180);
+        this.setTooltip('Set motors 11-18 from a list of 8 joint values');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_set_all_joints'] = function(block) {
+      var joints = Blockly.JavaScript.valueToCode(block, 'JOINTS', Blockly.JavaScript.ORDER_ATOMIC) || '[]';
+      return 'await Robot.setPositionMultipleLimited(Robot.motorIds, ' + joints + ');\n';
+    };
+
+    Blockly.Blocks['robot_copy_joint'] = {
       init: function() {
         this.appendDummyInput()
-            .appendField('get')
-            .appendField(new Blockly.FieldDropdown(MOTOR_GROUPS), 'GROUP')
-            .appendField('positions as list');
-        this.setOutput(true, 'Array');
-        this.setColour(180);
-        this.setTooltip('Returns list of positions for motor group');
-      }
-    };
-    Blockly.JavaScript.forBlock['robot_get_group_positions'] = function(block) {
-      var group = block.getFieldValue('GROUP');
-      var code = '(await (async function() { var ids = Robot.motorGroups["' + group + '"]; var positions = []; for (var i = 0; i < ids.length; i++) { positions.push(await Robot.getPosition(ids[i])); } return positions; })())';
-      return [code, Blockly.JavaScript.ORDER_AWAIT];
-    };
-
-    Blockly.Blocks['robot_set_positions_from_list'] = {
-      init: function() {
-        this.appendValueInput('POSITIONS').setCheck('Array')
-            .appendField('set all motor positions from list');
-        this.setPreviousStatement(true, null);
-        this.setNextStatement(true, null);
-        this.setColour(180);
-        this.setTooltip('Set motors 11-18 from a list of 8 positions');
-      }
-    };
-    Blockly.JavaScript.forBlock['robot_set_positions_from_list'] = function(block) {
-      var positions = Blockly.JavaScript.valueToCode(block, 'POSITIONS', Blockly.JavaScript.ORDER_ATOMIC) || '[]';
-      return 'await Robot.setPositionMultiple(Robot.motorIds, ' + positions + ');\n';
-    };
-
-    Blockly.Blocks['robot_set_group_from_list'] = {
-      init: function() {
-        this.appendValueInput('POSITIONS').setCheck('Array')
-            .appendField('set')
-            .appendField(new Blockly.FieldDropdown(MOTOR_GROUPS), 'GROUP')
-            .appendField('positions from list');
-        this.setPreviousStatement(true, null);
-        this.setNextStatement(true, null);
-        this.setColour(180);
-        this.setTooltip('Set motor group from a list of positions');
-      }
-    };
-    Blockly.JavaScript.forBlock['robot_set_group_from_list'] = function(block) {
-      var group = block.getFieldValue('GROUP');
-      var positions = Blockly.JavaScript.valueToCode(block, 'POSITIONS', Blockly.JavaScript.ORDER_ATOMIC) || '[]';
-      return 'await Robot.setPositionMultiple(Robot.motorGroups["' + group + '"], ' + positions + ');\n';
-    };
-
-    Blockly.Blocks['robot_set_multiple'] = {
-      init: function() {
-        this.appendDummyInput()
-            .appendField('set')
-            .appendField(new Blockly.FieldDropdown(MOTOR_GROUPS), 'GROUP')
-            .appendField('motors to center');
-        this.setPreviousStatement(true, null);
-        this.setNextStatement(true, null);
-        this.setColour(180);
-      }
-    };
-    Blockly.JavaScript.forBlock['robot_set_multiple'] = function(block) {
-      var group = block.getFieldValue('GROUP');
-      return 'await Robot.setPositionMultiple(Robot.motorGroups["' + group + '"], Robot.motorGroups["' + group + '"].map(function() { return 2048; }));\n';
-    };
-
-    Blockly.Blocks['robot_home_position'] = {
-      init: function() {
-        this.appendDummyInput().appendField('move all motors to home');
-        this.setPreviousStatement(true, null);
-        this.setNextStatement(true, null);
-        this.setColour(180);
-      }
-    };
-    Blockly.JavaScript.forBlock['robot_home_position'] = function(block) {
-      return 'await Robot.setPositionMultiple(Robot.motorIds, Robot.motorIds.map(function() { return 2048; }));\n';
-    };
-
-    Blockly.Blocks['robot_record_pose'] = {
-      init: function() {
-        this.appendDummyInput()
-            .appendField('record pose as')
-            .appendField(new Blockly.FieldTextInput('pose1'), 'NAME');
-        this.setPreviousStatement(true, null);
-        this.setNextStatement(true, null);
-        this.setColour(180);
-        this.setTooltip('Save current positions as a named pose');
-      }
-    };
-    Blockly.JavaScript.forBlock['robot_record_pose'] = function(block) {
-      var name = block.getFieldValue('NAME');
-      return 'recordedPoses["' + name + '"] = await (async function() { var positions = []; for (var i = 0; i < Robot.motorIds.length; i++) { positions.push(await Robot.getPosition(Robot.motorIds[i])); } return positions; })(); logConsole("Recorded pose: ' + name + ' (" + recordedPoses["' + name + '"].length + " motors)", "success");\n';
-    };
-
-    Blockly.Blocks['robot_play_pose'] = {
-      init: function() {
-        this.appendDummyInput()
-            .appendField('play pose')
-            .appendField(new Blockly.FieldTextInput('pose1'), 'NAME');
-        this.setPreviousStatement(true, null);
-        this.setNextStatement(true, null);
-        this.setColour(180);
-      }
-    };
-    Blockly.JavaScript.forBlock['robot_play_pose'] = function(block) {
-      var name = block.getFieldValue('NAME');
-      return 'if (recordedPoses["' + name + '"]) { await Robot.setPositionMultiple(Robot.motorIds, recordedPoses["' + name + '"]); } else { logConsole("Pose not found: ' + name + '", "error"); }\n';
-    };
-
-    Blockly.Blocks['robot_copy_pose'] = {
-      init: function() {
-        this.appendDummyInput()
-            .appendField('copy motor')
+            .appendField('copy joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'FROM')
-            .appendField('to motor')
+            .appendField('to joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'TO');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(180);
       }
     };
-    Blockly.JavaScript.forBlock['robot_copy_pose'] = function(block) {
+    Blockly.JavaScript.forBlock['robot_copy_joint'] = function(block) {
       var from = block.getFieldValue('FROM');
       var to = block.getFieldValue('TO');
-      return 'await Robot.setPosition(' + to + ', await Robot.getPosition(' + from + '));\n';
+      return 'await Robot.setPositionLimited(' + to + ', await Robot.getPosition(' + from + '));\n';
     };
 
     // === Kinematics Blocks ===
-    
-    var POSE_COMPONENTS = [['x','0'],['y','1'],['z','2'],['roll','3'],['pitch','4'],['yaw','5']];
 
-    Blockly.Blocks['robot_forward_kinematics'] = {
+    var COORDINATE_COMPONENTS = [['x','0'],['y','1'],['z','2'],['roll','3'],['pitch','4'],['yaw','5']];
+
+    Blockly.Blocks['robot_joints_to_coordinates'] = {
       init: function() {
         this.appendValueInput('JOINTS').setCheck('Array')
-            .appendField('forward kinematics of joints');
+            .appendField('joints to coordinates');
         this.setOutput(true, 'Array');
         this.setColour(290);
-        this.setTooltip('Convert joint positions list to [x, y, z, roll, pitch, yaw]');
+        this.setTooltip('Convert a list of 8 joint angles IN DEGREES to coordinates [x, y, z, roll, pitch, yaw]. Use "joints to degrees" first if you have raw joint values.');
+        this.setHelpUrl('');
       }
     };
-    Blockly.JavaScript.forBlock['robot_forward_kinematics'] = function(block) {
+    Blockly.JavaScript.forBlock['robot_joints_to_coordinates'] = function(block) {
       var joints = Blockly.JavaScript.valueToCode(block, 'JOINTS', Blockly.JavaScript.ORDER_ATOMIC) || '[]';
       return ['callFK(' + joints + ')', Blockly.JavaScript.ORDER_FUNCTION_CALL];
     };
 
-    Blockly.Blocks['robot_inverse_kinematics'] = {
+    Blockly.Blocks['robot_coordinates_to_joints'] = {
       init: function() {
-        this.appendValueInput('POSE').setCheck('Array')
-            .appendField('inverse kinematics of pose');
+        this.appendValueInput('COORDINATES').setCheck('Array')
+            .appendField('coordinates to joints');
         this.setOutput(true, 'Array');
         this.setColour(290);
-        this.setTooltip('Convert [x, y, z, roll, pitch, yaw] to joint positions list');
+        this.setTooltip('Convert coordinates [x, y, z, roll, pitch, yaw] to a list of 8 joint angles IN DEGREES. Use "degrees to joints" after if you need raw joint values.');
       }
     };
-    Blockly.JavaScript.forBlock['robot_inverse_kinematics'] = function(block) {
-      var pose = Blockly.JavaScript.valueToCode(block, 'POSE', Blockly.JavaScript.ORDER_ATOMIC) || '[0,0,0,0,0,0]';
-      return ['callIK(' + pose + ')', Blockly.JavaScript.ORDER_FUNCTION_CALL];
+    Blockly.JavaScript.forBlock['robot_coordinates_to_joints'] = function(block) {
+      var coordinates = Blockly.JavaScript.valueToCode(block, 'COORDINATES', Blockly.JavaScript.ORDER_ATOMIC) || '[0,0,0,0,0,0]';
+      return ['callIK(' + coordinates + ')', Blockly.JavaScript.ORDER_FUNCTION_CALL];
     };
 
-    Blockly.Blocks['robot_create_pose'] = {
+    Blockly.Blocks['robot_create_coordinates'] = {
       init: function() {
-        this.appendDummyInput().appendField('create pose');
+        this.appendDummyInput().appendField('create coordinates');
         this.appendValueInput('X').setCheck('Number').appendField('x');
         this.appendValueInput('Y').setCheck('Number').appendField('y');
         this.appendValueInput('Z').setCheck('Number').appendField('z');
@@ -1489,10 +1441,10 @@
         this.setInputsInline(true);
         this.setOutput(true, 'Array');
         this.setColour(290);
-        this.setTooltip('Create a pose list [x, y, z, roll, pitch, yaw]');
+        this.setTooltip('Create a coordinates list [x, y, z, roll, pitch, yaw]. x/y/z are position in mm, roll/pitch/yaw are rotation in degrees.');
       }
     };
-    Blockly.JavaScript.forBlock['robot_create_pose'] = function(block) {
+    Blockly.JavaScript.forBlock['robot_create_coordinates'] = function(block) {
       var x = Blockly.JavaScript.valueToCode(block, 'X', Blockly.JavaScript.ORDER_ATOMIC) || '0';
       var y = Blockly.JavaScript.valueToCode(block, 'Y', Blockly.JavaScript.ORDER_ATOMIC) || '0';
       var z = Blockly.JavaScript.valueToCode(block, 'Z', Blockly.JavaScript.ORDER_ATOMIC) || '0';
@@ -1502,58 +1454,43 @@
       return ['[' + x + ', ' + y + ', ' + z + ', ' + roll + ', ' + pitch + ', ' + yaw + ']', Blockly.JavaScript.ORDER_ATOMIC];
     };
 
-    Blockly.Blocks['robot_get_pose_component'] = {
+    Blockly.Blocks['robot_get_coordinate'] = {
       init: function() {
-        this.appendValueInput('POSE').setCheck('Array')
+        this.appendValueInput('COORDINATES').setCheck('Array')
             .appendField('get')
-            .appendField(new Blockly.FieldDropdown(POSE_COMPONENTS), 'COMPONENT')
-            .appendField('from pose');
+            .appendField(new Blockly.FieldDropdown(COORDINATE_COMPONENTS), 'COMPONENT')
+            .appendField('from coordinates');
         this.setOutput(true, 'Number');
         this.setColour(290);
-        this.setTooltip('Get a single component from a pose list');
+        this.setTooltip('Extract a single value from coordinates: x/y/z (position in mm) or roll/pitch/yaw (rotation in degrees).');
       }
     };
-    Blockly.JavaScript.forBlock['robot_get_pose_component'] = function(block) {
+    Blockly.JavaScript.forBlock['robot_get_coordinate'] = function(block) {
       var component = block.getFieldValue('COMPONENT');
-      var pose = Blockly.JavaScript.valueToCode(block, 'POSE', Blockly.JavaScript.ORDER_MEMBER) || '[0,0,0,0,0,0]';
-      return ['(' + pose + ')[' + component + ']', Blockly.JavaScript.ORDER_MEMBER];
+      var coordinates = Blockly.JavaScript.valueToCode(block, 'COORDINATES', Blockly.JavaScript.ORDER_MEMBER) || '[0,0,0,0,0,0]';
+      return ['(' + coordinates + ')[' + component + ']', Blockly.JavaScript.ORDER_MEMBER];
     };
 
-    Blockly.Blocks['robot_move_to_pose'] = {
+    Blockly.Blocks['robot_get_current_coordinates'] = {
       init: function() {
-        this.appendValueInput('POSE').setCheck('Array')
-            .appendField('move robot to pose');
-        this.setPreviousStatement(true, null);
-        this.setNextStatement(true, null);
-        this.setColour(290);
-        this.setTooltip('Use inverse kinematics to move to [x,y,z,roll,pitch,yaw]');
-      }
-    };
-    Blockly.JavaScript.forBlock['robot_move_to_pose'] = function(block) {
-      var pose = Blockly.JavaScript.valueToCode(block, 'POSE', Blockly.JavaScript.ORDER_ATOMIC) || '[0,0,0,0,0,0]';
-      return 'var _joints = callIK(' + pose + '); await Robot.setPositionMultiple(Robot.motorIds, _joints);\n';
-    };
-
-    Blockly.Blocks['robot_get_current_pose'] = {
-      init: function() {
-        this.appendDummyInput().appendField('get current robot pose');
+        this.appendDummyInput().appendField('get current coordinates');
         this.setOutput(true, 'Array');
         this.setColour(290);
-        this.setTooltip('Get current [x, y, z, roll, pitch, yaw] using forward kinematics');
+        this.setTooltip('Get the robot\'s current position as coordinates [x, y, z, roll, pitch, yaw]. Reads all joints and converts to coordinates.');
       }
     };
-    Blockly.JavaScript.forBlock['robot_get_current_pose'] = function(block) {
-      var code = '(await (async function() { var joints = []; for (var i = 0; i < Robot.motorIds.length; i++) { joints.push(await Robot.getPosition(Robot.motorIds[i])); } return callFK(joints); })())';
+    Blockly.JavaScript.forBlock['robot_get_current_coordinates'] = function(block) {
+      var code = '(await (async function() { var joints = []; for (var i = 0; i < Robot.motorIds.length; i++) { joints.push(Robot.positionToDegrees(await Robot.getPosition(Robot.motorIds[i]))); } return callFK(joints); })())';
       return [code, Blockly.JavaScript.ORDER_AWAIT];
     };
 
     Blockly.Blocks['robot_joints_to_degrees'] = {
       init: function() {
         this.appendValueInput('JOINTS').setCheck('Array')
-            .appendField('convert positions to degrees');
+            .appendField('joints to degrees');
         this.setOutput(true, 'Array');
         this.setColour(290);
-        this.setTooltip('Convert raw motor positions to degrees');
+        this.setTooltip('Convert a list of raw joint values (0-4095) to degrees (-180 to 180). Center position 2048 = 0 degrees.');
       }
     };
     Blockly.JavaScript.forBlock['robot_joints_to_degrees'] = function(block) {
@@ -1564,10 +1501,10 @@
     Blockly.Blocks['robot_degrees_to_joints'] = {
       init: function() {
         this.appendValueInput('DEGREES').setCheck('Array')
-            .appendField('convert degrees to positions');
+            .appendField('degrees to joints');
         this.setOutput(true, 'Array');
         this.setColour(290);
-        this.setTooltip('Convert degrees to raw motor positions');
+        this.setTooltip('Convert a list of degrees (-180 to 180) to raw joint values (0-4095). 0 degrees = center position 2048.');
       }
     };
     Blockly.JavaScript.forBlock['robot_degrees_to_joints'] = function(block) {
@@ -1579,7 +1516,7 @@
     Blockly.Blocks['robot_is_moving'] = {
       init: function() {
         this.appendDummyInput()
-            .appendField('motor')
+            .appendField('joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
             .appendField('is moving');
         this.setOutput(true, 'Boolean');
@@ -1595,7 +1532,7 @@
     Blockly.Blocks['robot_wait_until_stopped'] = {
       init: function() {
         this.appendValueInput('TIMEOUT').setCheck('Number')
-            .appendField('wait until motor')
+            .appendField('wait until joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
             .appendField('stopped, timeout');
         this.appendDummyInput().appendField('seconds');
@@ -1614,11 +1551,11 @@
     Blockly.Blocks['robot_get_load'] = {
       init: function() {
         this.appendDummyInput()
-            .appendField('load of motor')
+            .appendField('load of joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
         this.setOutput(true, 'Number');
         this.setColour(210);
-        this.setTooltip('Get motor current load (-1000 to 1000)');
+        this.setTooltip('Get joint current load (-1000 to 1000)');
       }
     };
     Blockly.JavaScript.forBlock['robot_get_load'] = function(block) {
@@ -1630,11 +1567,11 @@
     Blockly.Blocks['robot_get_temperature'] = {
       init: function() {
         this.appendDummyInput()
-            .appendField('temperature of motor')
+            .appendField('temperature of joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
         this.setOutput(true, 'Number');
         this.setColour(210);
-        this.setTooltip('Get motor temperature in °C');
+        this.setTooltip('Get joint temperature in °C');
       }
     };
     Blockly.JavaScript.forBlock['robot_get_temperature'] = function(block) {
@@ -1643,23 +1580,23 @@
       return ['(await (async function() { var pkt = Robot.buildReadPacket(' + motor + ', 146, 1); var resp = await Robot.sendPacket(pkt, true, ' + motor + '); if (resp && resp.length >= 12) { return resp[9]; } return 0; })())', Blockly.JavaScript.ORDER_AWAIT];
     };
 
-    Blockly.Blocks['robot_position_in_range'] = {
+    Blockly.Blocks['robot_joint_in_range'] = {
       init: function() {
         this.appendValueInput('MIN').setCheck('Number')
-            .appendField('motor')
+            .appendField('joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR')
-            .appendField('position between');
+            .appendField('between');
         this.appendValueInput('MAX').setCheck('Number').appendField('and');
         this.setInputsInline(true);
         this.setOutput(true, 'Boolean');
         this.setColour(210);
       }
     };
-    Blockly.JavaScript.forBlock['robot_position_in_range'] = function(block) {
+    Blockly.JavaScript.forBlock['robot_joint_in_range'] = function(block) {
       var motor = block.getFieldValue('MOTOR');
       var min = Blockly.JavaScript.valueToCode(block, 'MIN', Blockly.JavaScript.ORDER_ATOMIC) || '0';
       var max = Blockly.JavaScript.valueToCode(block, 'MAX', Blockly.JavaScript.ORDER_ATOMIC) || '4095';
-      return ['(function() { var p = motorPositionCache[' + motor + '] || 2048; return p >= ' + min + ' && p <= ' + max + '; })()', Blockly.JavaScript.ORDER_FUNCTION_CALL];
+      return ['(function() { var j = motorPositionCache[' + motor + '] || 2048; return j >= ' + min + ' && j <= ' + max + '; })()', Blockly.JavaScript.ORDER_FUNCTION_CALL];
     };
 
     // === Timing Blocks ===
@@ -1741,19 +1678,19 @@
       return 'logConsole(' + msg + ');\n';
     };
 
-    Blockly.Blocks['robot_log_position'] = {
+    Blockly.Blocks['robot_log_joint'] = {
       init: function() {
         this.appendDummyInput()
-            .appendField('log position of motor')
+            .appendField('log joint')
             .appendField(new Blockly.FieldDropdown(MOTORS), 'MOTOR');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(60);
       }
     };
-    Blockly.JavaScript.forBlock['robot_log_position'] = function(block) {
+    Blockly.JavaScript.forBlock['robot_log_joint'] = function(block) {
       var motor = block.getFieldValue('MOTOR');
-      return 'logConsole("Motor ' + motor + ': " + (await Robot.getPosition(' + motor + ')) + " (" + Robot.positionToDegrees(await Robot.getPosition(' + motor + ')).toFixed(1) + "°)", "info");\n';
+      return 'logConsole("Joint ' + motor + ': " + (await Robot.getPosition(' + motor + ')) + " (" + Robot.positionToDegrees(await Robot.getPosition(' + motor + ')).toFixed(1) + "°)", "info");\n';
     };
 
     Blockly.Blocks['robot_log_type'] = {
@@ -1772,6 +1709,20 @@
       var msg = Blockly.JavaScript.valueToCode(block, 'MESSAGE', Blockly.JavaScript.ORDER_ATOMIC) || '""';
       var type = block.getFieldValue('TYPE');
       return 'logConsole(' + msg + ', "' + type + '");\n';
+    };
+
+    Blockly.Blocks['robot_alert'] = {
+      init: function() {
+        this.appendValueInput('MESSAGE').appendField('alert');
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(60);
+        this.setTooltip('Show a popup alert message');
+      }
+    };
+    Blockly.JavaScript.forBlock['robot_alert'] = function(block) {
+      var msg = Blockly.JavaScript.valueToCode(block, 'MESSAGE', Blockly.JavaScript.ORDER_ATOMIC) || '""';
+      return 'alert(' + msg + ');\n';
     };
 
     // ========== Workspace ==========
