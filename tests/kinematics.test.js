@@ -168,7 +168,7 @@ describe('Kinematics', () => {
   describe('Physical Constraints', () => {
     test('should document minimum Z height (Z=0 in user coordinates)', () => {
       // This test documents the physical constraint
-      // Z=0 is now the minimum height (internally HEAD_Z_OFFSET = 177mm)
+      // Z=0 is now the minimum height (internally HEAD_Z_OFFSET = 172mm)
       const minZ = 0;
       const coords = [0, 0, minZ, 0, 0, 0];
       const joints = wasm.inverse_kinematics(coords);

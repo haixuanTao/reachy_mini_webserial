@@ -1,6 +1,6 @@
 use nalgebra::{DVector, Matrix3, Matrix3x6, Matrix4, MatrixXx6, Vector3};
 
-const HEAD_Z_OFFSET: f32 = 0.177;
+const HEAD_Z_OFFSET: f32 = 0.172;
 
 struct Branch {
     branch_platform: Vector3<f32>,
