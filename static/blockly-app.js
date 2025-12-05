@@ -1109,11 +1109,9 @@
     Blockly.Blocks['set_degrees'] = {
       init: function() {
         this.appendValueInput('DEGREES').setCheck('Number')
-            .appendField('set')
+            .appendField('set angle of')
             .appendField(new Blockly.FieldDropdown(EARS), 'MOTOR')
             .appendField('to');
-        this.appendDummyInput().appendField('degrees');
-        this.setInputsInline(true);
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(160);
@@ -1143,7 +1141,7 @@
     Blockly.Blocks['get_degrees'] = {
       init: function() {
         this.appendDummyInput()
-            .appendField('degrees of')
+            .appendField('get angle of')
             .appendField(new Blockly.FieldDropdown(EARS), 'MOTOR');
         this.setOutput(true, 'Number');
         this.setColour(160);
@@ -1157,14 +1155,13 @@
     Blockly.Blocks['move_by'] = {
       init: function() {
         this.appendValueInput('AMOUNT').setCheck('Number')
-            .appendField('move')
+            .appendField('change angle of')
             .appendField(new Blockly.FieldDropdown(EARS), 'MOTOR')
-            .appendField('by')
-            .appendField('degrees');
+            .appendField('by');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(160);
-        this.setTooltip('Move ear by relative amount in degrees');
+        this.setTooltip('Change ear angle by relative amount in degrees');
       }
     };
     Blockly.JavaScript.forBlock['move_by'] = function(block) {
@@ -1193,25 +1190,6 @@
       var joint = Blockly.JavaScript.valueToCode(block, 'JOINT', Blockly.JavaScript.ORDER_ATOMIC) || '2048';
       var dur = Blockly.JavaScript.valueToCode(block, 'DURATION', Blockly.JavaScript.ORDER_ATOMIC) || '1';
       return 'await Robot.moveSmooth(' + motor + ', ' + joint + ', ' + dur + ' * 1000);\n';
-    };
-
-    Blockly.Blocks['set_speed'] = {
-      init: function() {
-        this.appendValueInput('SPEED').setCheck('Number')
-            .appendField('set')
-            .appendField(new Blockly.FieldDropdown(EARS), 'MOTOR')
-            .appendField('speed to');
-        this.setPreviousStatement(true, null);
-        this.setNextStatement(true, null);
-        this.setColour(160);
-        this.setTooltip('Set ear velocity limit (0-1023)');
-      }
-    };
-    Blockly.JavaScript.forBlock['set_speed'] = function(block) {
-      var motor = block.getFieldValue('MOTOR');
-      var speed = Blockly.JavaScript.valueToCode(block, 'SPEED', Blockly.JavaScript.ORDER_ATOMIC) || '100';
-      // Address 112 = Profile Velocity
-      return 'await Robot.sendPacket(Robot.buildWritePacket(' + motor + ', 112, [' + speed + ' & 0xFF, (' + speed + ' >> 8) & 0xFF, (' + speed + ' >> 16) & 0xFF, (' + speed + ' >> 24) & 0xFF]), false);\n';
     };
 
     // === Multi-Motor Blocks ===
@@ -1768,10 +1746,6 @@
       var joint = Blockly.Python.valueToCode(block, 'JOINT', Blockly.Python.ORDER_ATOMIC) || '2048';
       var dur = Blockly.Python.valueToCode(block, 'DURATION', Blockly.Python.ORDER_ATOMIC) || '1';
       return '# move_smooth - use goto_target with duration instead\n';
-    };
-
-    Blockly.Python.forBlock['set_speed'] = function(block) {
-      return '# set_speed not supported in Python API\n';
     };
 
     // === Python Kinematics Blocks ===
@@ -3460,17 +3434,6 @@
         return block;
       }
 
-      // Robot.setSpeed(motor, speed) -> set_speed
-      if (callee === 'Robot.setSpeed' && args.length >= 2) {
-        var block = workspace.newBlock('set_speed');
-        block.initSvg();
-        setMotorField(block, args[0]);
-        var speedBlock = processExpression(args[1], false);
-        if (speedBlock) connectValue(block, 'SPEED', speedBlock);
-        block.render();
-        return block;
-      }
-
       return null;
     }
 
@@ -3685,7 +3648,7 @@
       // Get available block types
       var availableBlocks = [
         'Connection: enable_torque, disable_torque, enable_all, disable_all, check_joints, ping_joint, reboot_joint, reboot_all',
-        'Ears (motors 17-18): set_degrees, get_degrees, move_by, set_speed',
+        'Ears (motors 17-18): set_degrees, get_degrees, move_by',
         'Head (coordinate control): get_head_coordinates, set_head_coordinates',
         'Coordinates: create_coordinates, get_coordinate',
         'Sensing: is_moving, wait_until_stopped, get_load, get_temperature, joint_in_range',
@@ -3762,7 +3725,6 @@
           'EAR CONTROL (direct motor control):\n' +
           '- Robot.setDegrees(motor, degrees) - set ear angle in degrees\n' +
           '- Robot.getDegrees(motor) - get ear angle in degrees\n' +
-          '- Robot.setSpeed(motor, speed) - set ear movement speed (0-1023)\n' +
           '- Motors: 17 = left ear, 18 = right ear\n\n' +
           'TORQUE (enable/disable motors):\n' +
           '- Robot.setTorque(motor, true/false) - enable/disable single motor (11-18)\n' +

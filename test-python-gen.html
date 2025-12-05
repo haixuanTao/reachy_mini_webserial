@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Python Generation Test</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/blockly/10.4.3/blockly.min.js"></script>
+  <style>
+    body { font-family: monospace; padding: 20px; }
+    #workspace { display: none; }
+    .test-case { margin: 20px 0; padding: 10px; border: 1px solid #ccc; }
+    .test-case.pass { background: #d4edda; }
+    .test-case.fail { background: #f8d7da; }
+    pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>Python Code Generation Tests</h1>
+  <div id="results"></div>
+  <div id="workspace"></div>
+
+  <script src="blockly-app.js"></script>
+  <script>
+    // Initialize workspace
+    var workspace = Blockly.inject('workspace', {
+      toolbox: document.getElementById('toolbox')
+    });
+
+    var resultsDiv = document.getElementById('results');
+    var testsPassed = 0;
+    var testsFailed = 0;
+
+    function runTest(testName, blockCreator, expectedSubstrings) {
+      workspace.clear();
+
+      try {
+        // Create blocks
+        blockCreator(workspace);
+
+        // Generate Python code
+        var pythonCode = Blockly.Python.workspaceToCode(workspace);
+
+        // Check if expected substrings are present
+        var passed = true;
+        var missingSubstrings = [];
+
+        for (var i = 0; i < expectedSubstrings.length; i++) {
+          if (pythonCode.indexOf(expectedSubstrings[i]) === -1) {
+            passed = false;
+            missingSubstrings.push(expectedSubstrings[i]);
+          }
+        }
+
+        // Display result
+        var testDiv = document.createElement('div');
+        testDiv.className = 'test-case ' + (passed ? 'pass' : 'fail');
+
+        var html = '<h3>' + (passed ? '✓ PASS' : '✗ FAIL') + ': ' + testName + '</h3>';
+        html += '<pre>' + pythonCode + '</pre>';
+
+        if (!passed) {
+          html += '<p><strong>Missing expected strings:</strong> ' + missingSubstrings.join(', ') + '</p>';
+        }
+
+        testDiv.innerHTML = html;
+        resultsDiv.appendChild(testDiv);
+
+        if (passed) {
+          testsPassed++;
+        } else {
+          testsFailed++;
+        }
+
+      } catch (e) {
+        var errorDiv = document.createElement('div');
+        errorDiv.className = 'test-case fail';
+        errorDiv.innerHTML = '<h3>✗ ERROR: ' + testName + '</h3><pre>' + e.message + '\n' + e.stack + '</pre>';
+        resultsDiv.appendChild(errorDiv);
+        testsFailed++;
+      }
+    }
+
+    // Test 1: Create coordinates block
+    runTest('Create Coordinates Block', function(ws) {
+      var block = ws.newBlock('create_coordinates');
+      block.setFieldValue('10', 'X');
+      block.setFieldValue('20', 'Y');
+      block.setFieldValue('30', 'Z');
+      block.setFieldValue('0', 'ROLL');
+      block.setFieldValue('15', 'PITCH');
+      block.setFieldValue('0', 'YAW');
+      block.initSvg();
+    }, ['create_head_pose', 'x=10', 'y=20', 'z=30', 'pitch=15']);
+
+    // Test 2: Move to coordinates block
+    runTest('Move to Coordinates Block', function(ws) {
+      var coordBlock = ws.newBlock('create_coordinates');
+      coordBlock.setFieldValue('5', 'X');
+      coordBlock.setFieldValue('5', 'Y');
+      coordBlock.initSvg();
+
+      var moveBlock = ws.newBlock('move_to_coordinates');
+      moveBlock.setFieldValue('2', 'DURATION');
+      moveBlock.initSvg();
+
+      var coordInput = moveBlock.getInput('COORDINATES');
+      coordInput.connection.connect(coordBlock.outputConnection);
+    }, ['goto_target', 'duration=2']);
+
+    // Test 3: Set target position block
+    runTest('Set Target Position Block', function(ws) {
+      var coordBlock = ws.newBlock('create_coordinates');
+      coordBlock.initSvg();
+
+      var setBlock = ws.newBlock('set_target_position');
+      setBlock.initSvg();
+
+      var coordInput = setBlock.getInput('COORDINATES');
+      coordInput.connection.connect(coordBlock.outputConnection);
+    }, ['set_target', 'head=']);
+
+    // Test 4: Set antenna position block
+    runTest('Set Antenna Position Block', function(ws) {
+      var block = ws.newBlock('set_antenna_position');
+      block.setFieldValue('45', 'LEFT');
+      block.setFieldValue('-45', 'RIGHT');
+      block.initSvg();
+    }, ['set_target', 'antennas=', '45', '-45']);
+
+    // Test 5: Wait block
+    runTest('Wait Block', function(ws) {
+      var block = ws.newBlock('wait_time');
+      block.setFieldValue('1.5', 'SECONDS');
+      block.initSvg();
+    }, ['time.sleep(1.5)']);
+
+    // Test 6: Math number block
+    runTest('Math Number Block', function(ws) {
+      var block = ws.newBlock('math_number');
+      block.setFieldValue('42', 'NUM');
+      block.initSvg();
+    }, ['42']);
+
+    // Test 7: If statement block
+    runTest('If Statement Block', function(ws) {
+      var ifBlock = ws.newBlock('controls_if');
+      ifBlock.initSvg();
+
+      var boolBlock = ws.newBlock('logic_boolean');
+      boolBlock.setFieldValue('TRUE', 'BOOL');
+      boolBlock.initSvg();
+
+      var ifInput = ifBlock.getInput('IF0');
+      ifInput.connection.connect(boolBlock.outputConnection);
+    }, ['if True:']);
+
+    // Test 8: Repeat block
+    runTest('Repeat Block', function(ws) {
+      var repeatBlock = ws.newBlock('controls_repeat_ext');
+      repeatBlock.initSvg();
+
+      var numBlock = ws.newBlock('math_number');
+      numBlock.setFieldValue('10', 'NUM');
+      numBlock.initSvg();
+
+      var timesInput = repeatBlock.getInput('TIMES');
+      timesInput.connection.connect(numBlock.outputConnection);
+    }, ['for count in range(10):']);
+
+    // Display summary
+    var summaryDiv = document.createElement('div');
+    summaryDiv.style.marginTop = '20px';
+    summaryDiv.style.padding = '20px';
+    summaryDiv.style.background = testsFailed === 0 ? '#d4edda' : '#f8d7da';
+    summaryDiv.style.fontWeight = 'bold';
+    summaryDiv.style.fontSize = '18px';
+    summaryDiv.innerHTML = 'Tests Passed: ' + testsPassed + ' | Tests Failed: ' + testsFailed;
+    resultsDiv.insertBefore(summaryDiv, resultsDiv.firstChild);
+  </script>
+</body>
+</html>
