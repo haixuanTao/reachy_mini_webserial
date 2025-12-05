@@ -2698,13 +2698,14 @@
       // If statement
       if (node.type === 'IfStatement') {
         var block = workspace.newBlock('controls_if');
-        block.initSvg();
 
-        // If there's an else clause, we need to mutate the block
+        // If there's an else clause, we need to mutate the block BEFORE initSvg
         if (node.alternate) {
           block.elseCount_ = 1;
           block.updateShape_();
         }
+
+        block.initSvg();
 
         var condBlock = processExpression(node.test, false);
         if (condBlock) connectValue(block, 'IF0', condBlock);
