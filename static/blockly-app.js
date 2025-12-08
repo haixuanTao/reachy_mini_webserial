@@ -82,7 +82,7 @@
       writer: null,
       connected: false,
       readBuffer: [],
-      motorIds: [11, 12, 13, 14, 15, 16],  // Head motors only (ears are controlled separately)
+      motorIds: [11, 12, 13, 14, 15, 16],  // Head motors only (antennas are controlled separately)
 
       CRC_TABLE: [
         0x0000, 0x8005, 0x800F, 0x000A, 0x801B, 0x001E, 0x0014, 0x8011,
@@ -967,9 +967,9 @@
     }
 
     // ========== Custom Blocks ==========
-    var EARS = [['Left ear (17)','17'],['Right ear (18)','18']];
+    var ANTENNAS = [['Left antenna (17)','17'],['Right antenna (18)','18']];
     var HEAD_MOTORS = [['11','11'],['12','12'],['13','13'],['14','14'],['15','15'],['16','16']];
-    var ALL_MOTORS = [['Head 11','11'],['Head 12','12'],['Head 13','13'],['Head 14','14'],['Head 15','15'],['Head 16','16'],['Left ear (17)','17'],['Right ear (18)','18']];
+    var ALL_MOTORS = [['Head 11','11'],['Head 12','12'],['Head 13','13'],['Head 14','14'],['Head 15','15'],['Head 16','16'],['Left antenna (17)','17'],['Right antenna (18)','18']];
     var LOG_TYPES = [['info','info'],['success','success'],['warning','warn'],['error','error']];
 
     // === Connection Blocks ===
@@ -1110,12 +1110,12 @@
       init: function() {
         this.appendValueInput('DEGREES').setCheck('Number')
             .appendField('set angle of')
-            .appendField(new Blockly.FieldDropdown(EARS), 'MOTOR')
+            .appendField(new Blockly.FieldDropdown(ANTENNAS), 'MOTOR')
             .appendField('to');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(160);
-        this.setTooltip('Set ear angle in degrees (0 = center)');
+        this.setTooltip('Set antenna angle in degrees (0 = center)');
       }
     };
     Blockly.JavaScript.forBlock['set_degrees'] = function(block) {
@@ -1142,7 +1142,7 @@
       init: function() {
         this.appendDummyInput()
             .appendField('get angle of')
-            .appendField(new Blockly.FieldDropdown(EARS), 'MOTOR');
+            .appendField(new Blockly.FieldDropdown(ANTENNAS), 'MOTOR');
         this.setOutput(true, 'Number');
         this.setColour(160);
       }
@@ -1156,12 +1156,12 @@
       init: function() {
         this.appendValueInput('AMOUNT').setCheck('Number')
             .appendField('change angle of')
-            .appendField(new Blockly.FieldDropdown(EARS), 'MOTOR')
+            .appendField(new Blockly.FieldDropdown(ANTENNAS), 'MOTOR')
             .appendField('by');
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(160);
-        this.setTooltip('Change ear angle by relative amount in degrees');
+        this.setTooltip('Change antenna angle by relative amount in degrees');
       }
     };
     Blockly.JavaScript.forBlock['move_by'] = function(block) {
@@ -1722,9 +1722,9 @@
     Blockly.Python.forBlock['set_degrees'] = function(block) {
       var motor = block.getFieldValue('MOTOR');
       var deg = Blockly.Python.valueToCode(block, 'DEGREES', Blockly.Python.ORDER_ATOMIC) || '0';
-      var earIndex = motor === '17' ? '0' : '1';
+      var antennaIndex = motor === '17' ? '0' : '1';
       Blockly.Python.definitions_['import_numpy'] = 'import numpy as np';
-      return 'mini.set_target(antennas=[np.deg2rad(' + deg + '), 0] if ' + earIndex + ' == 0 else [0, np.deg2rad(' + deg + ')])\n';
+      return 'mini.set_target(antennas=[np.deg2rad(' + deg + '), 0] if ' + antennaIndex + ' == 0 else [0, np.deg2rad(' + deg + ')])\n';
     };
 
     Blockly.Python.forBlock['get_joint'] = function(block) {
@@ -2249,7 +2249,7 @@
         } else if (blockType === 'get_degrees') {
           var motor = block.getFieldValue('MOTOR');
           Robot.getDegrees(motor).then(function(degrees) {
-            var motorName = motor === '17' ? 'Left ear' : motor === '18' ? 'Right ear' : 'Motor ' + motor;
+            var motorName = motor === '17' ? 'Left antenna' : motor === '18' ? 'Right antenna' : 'Motor ' + motor;
             logConsole(motorName + ' angle: ' + degrees.toFixed(1) + '°', 'info');
           }).catch(function(e) {
             logConsole('Failed to get degrees: ' + e.message, 'error');
@@ -2258,7 +2258,7 @@
           var motor = block.getFieldValue('MOTOR');
           Robot.getPosition(motor).then(function(pos) {
             var degrees = Robot.positionToDegrees(pos);
-            var motorName = motor === '17' ? 'Left ear' : motor === '18' ? 'Right ear' : 'Motor ' + motor;
+            var motorName = motor === '17' ? 'Left antenna' : motor === '18' ? 'Right antenna' : 'Motor ' + motor;
             logConsole(motorName + ': ' + pos + ' (' + degrees.toFixed(1) + '°)', 'info');
           }).catch(function(e) {
             logConsole('Failed to get position: ' + e.message, 'error');
@@ -2266,7 +2266,7 @@
         } else if (blockType === 'get_load') {
           var motor = block.getFieldValue('MOTOR');
           Robot.getLoad(motor).then(function(load) {
-            var motorName = motor === '17' ? 'Left ear' : motor === '18' ? 'Right ear' : 'Motor ' + motor;
+            var motorName = motor === '17' ? 'Left antenna' : motor === '18' ? 'Right antenna' : 'Motor ' + motor;
             logConsole(motorName + ' load: ' + load, 'info');
           }).catch(function(e) {
             logConsole('Failed to get load: ' + e.message, 'error');
@@ -2274,7 +2274,7 @@
         } else if (blockType === 'get_temperature') {
           var motor = block.getFieldValue('MOTOR');
           Robot.getTemperature(motor).then(function(temp) {
-            var motorName = motor === '17' ? 'Left ear' : motor === '18' ? 'Right ear' : 'Motor ' + motor;
+            var motorName = motor === '17' ? 'Left antenna' : motor === '18' ? 'Right antenna' : 'Motor ' + motor;
             logConsole(motorName + ' temperature: ' + temp + '°C', 'info');
           }).catch(function(e) {
             logConsole('Failed to get temperature: ' + e.message, 'error');
@@ -3649,7 +3649,7 @@
       // Get available block types
       var availableBlocks = [
         'Connection: enable_torque, disable_torque, enable_all, disable_all, check_joints, ping_joint, reboot_joint, reboot_all',
-        'Ears (motors 17-18): set_degrees, get_degrees, move_by',
+        'Antennas (motors 17-18): set_degrees, get_degrees, move_by',
         'Head (coordinate control): get_head_coordinates, set_head_coordinates',
         'Coordinates: create_coordinates, get_coordinate',
         'Sensing: is_moving, wait_until_stopped, get_load, get_temperature, joint_in_range',
@@ -3707,9 +3707,9 @@
           '     * Example: [10, 0, 0, 0, 0, 0] = move forward 10mm\n' +
           '     * Example: [0, 5, 0, 0, 0, 0] = move right 5mm\n' +
           '     * Example: [0, 0, -10, 0, 0, 0] = move down 10mm\n\n' +
-          '2. EARS (motors 17-18): Independent motors that can be controlled directly\n' +
-          '   - Motor 17: Left ear\n' +
-          '   - Motor 18: Right ear\n' +
+          '2. ANTENNAS (motors 17-18): Independent motors that can be controlled directly\n' +
+          '   - Motor 17: Left antenna\n' +
+          '   - Motor 18: Right antenna\n' +
           '   - Control using degrees (angle position)\n\n' +
           'AVAILABLE FUNCTIONS:\n\n' +
           'HEAD CONTROL (coordinate-based only):\n' +
@@ -3723,14 +3723,14 @@
           '  var coords = [x, y, z, roll, pitch, yaw];\n' +
           '  coords[2] = -10; // change z\n' +
           '  await Robot.setHeadCoordinates(coords);\n\n' +
-          'EAR CONTROL (direct motor control):\n' +
-          '- Robot.setDegrees(motor, degrees) - set ear angle in degrees\n' +
-          '- Robot.getDegrees(motor) - get ear angle in degrees\n' +
-          '- Motors: 17 = left ear, 18 = right ear\n\n' +
+          'ANTENNA CONTROL (direct motor control):\n' +
+          '- Robot.setDegrees(motor, degrees) - set antenna angle in degrees\n' +
+          '- Robot.getDegrees(motor) - get antenna angle in degrees\n' +
+          '- Motors: 17 = left antenna, 18 = right antenna\n\n' +
           'TORQUE (enable/disable motors):\n' +
           '- Robot.setTorque(motor, true/false) - enable/disable single motor (11-18)\n' +
           '- Robot.setTorqueMultiple([11,12,13,14,15,16], true/false) - enable/disable all head motors\n' +
-          '- Robot.setTorqueMultiple([11,12,13,14,15,16,17,18], true/false) - enable/disable all motors (head + ears)\n\n' +
+          '- Robot.setTorqueMultiple([11,12,13,14,15,16,17,18], true/false) - enable/disable all motors (head + antennas)\n\n' +
           'STATUS & DIAGNOSTICS:\n' +
           '- Robot.checkAllMotors() - check all motors (11-18)\n' +
           '- Robot.ping(motor) - ping single motor\n' +
@@ -3792,7 +3792,7 @@
           '  await Robot.setHeadCoordinates([0, 0, 0, 0, 0, 0]);\n' +
           '  wait(0.5);\n' +
           '}\n\n' +
-          'EXAMPLE 2 - Move ears back and forth:\n' +
+          'EXAMPLE 2 - Move antennas back and forth:\n' +
           'Robot.setTorqueMultiple([17,18], true);\n' +
           'for (var i = 0; i < 3; i++) {\n' +
           '  Robot.setDegrees(17, 45);\n' +
