@@ -66,14 +66,8 @@ extern "C" {
     #[wasm_bindgen(js_namespace = window, catch)]
     async fn requestSerialPort() -> Result<JsValue, JsValue>;
 
-    #[wasm_bindgen(js_name = getCachedPort)]
-    fn get_cached_port() -> JsValue;
-
     #[wasm_bindgen(js_name = closeSerialPort)]
     async fn close_serial_port();
-
-    #[wasm_bindgen(js_name = isOpen)]
-    async fn is_open() -> Boolean;
 
     #[wasm_bindgen(js_name = updatePose)]
     fn update_pose(x: f32, y: f32, z: f32, roll: f32, pitch: f32, yaw: f32);

@@ -1,9 +1,9 @@
 {
   "author": "You <you@example.com>",
-  "name": "reachy-mini-wasm",
-  "version": "0.1.0",
+  "name": "reachy-mini",
+  "version": "0.2.1",
   "scripts": {
-    "build": "rimraf dist pkg && webpack",
+    "build": "rimraf dist pkg && webpack && node scripts/copy-helpers.js",
     "start": "rimraf dist pkg && webpack serve --open",
     "test": "jest tests/jsToBlockTree.test.js --verbose",
     "test:wasm": "cargo test && wasm-pack test --headless",

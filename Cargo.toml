@@ -1,8 +1,8 @@
 # You must change these to your own details.
 [package]
-name = "reachy-mini-wasm"
+name = "reachy-mini"
 description = "Reachy Mini Wasm API!"
-version = "0.1.0"
+version = "0.2.1"
 authors = ["Xavier Tao, tao.xavier@outlook.com"]
 categories = ["wasm"]
 readme = "README.md"

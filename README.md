@@ -1,48 +1,133 @@
-## How to install
+# Reachy Mini 🤖
 
-```sh
-npm install
+> Browser-based control library for Reachy Mini robot using WebAssembly
+
+[![npm](https://img.shields.io/npm/v/reachy-mini.svg)](https://www.npmjs.com/package/reachy-mini)
+[![WebAssembly](https://img.shields.io/badge/WebAssembly-654FF0?logo=webassembly&logoColor=fff)](https://webassembly.org/)
+
+High-performance JavaScript package for controlling the Reachy Mini humanoid robot head. Built with Rust/WASM for real-time kinematics and motor control.
+
+## Features
+
+- 🚀 WebAssembly-powered kinematics (forward & inverse)
+- 🔌 WebSerial (USB) or WebSocket connectivity
+- 📱 Cross-platform (Desktop Chrome/Edge, Android with WebUSB)
+- 🎬 Record and replay robot movements
+- 🔧 Direct Dynamixel XL330 motor control (8 servos, IDs 11-18)
+
+## Installation
+
+```bash
+npm install reachy-mini
 ```
 
-## How to run in debug mode
+## Usage in HTML (CDN)
 
-```sh
-# Builds the project and opens it in a new browser tab. Auto-reloads when the project changes.
-npm start
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reachy Mini Control</title>
+</head>
+<body>
+    <h1>Reachy Mini Control</h1>
+    <button id="connect-btn">Connect</button>
+    <button id="enable-btn">Enable Torque</button>
+    <button id="test-btn">Test Kinematics</button>
+    <button id="disable-btn">Disable Torque</button>
+
+    <script type="module">
+        // Import from CDN (no npm install needed!)
+        import init, {
+            connect,
+            torque_on,
+            torque_off,
+            forward_kinematics,
+            inverse_kinematics
+        } from 'https://unpkg.com/reachy-mini@0.2.0';
+
+        // Initialize WASM module
+        await init();
+
+        document.getElementById('connect-btn').onclick = async () => {
+            await connect();
+            console.log('Connected!');
+        };
+
+        document.getElementById('enable-btn').onclick = async () => {
+            await torque_on();
+            console.log('Motors enabled');
+        };
+
+        document.getElementById('test-btn').onclick = () => {
+            const pose = forward_kinematics([0, 0, 0, 0, 0, 0, 0, 0]);
+            console.log('Pose:', pose);
+            const joints = inverse_kinematics([0, 0, 0, 0, 0, 0]);
+            console.log('Joints:', joints);
+        };
+
+        document.getElementById('disable-btn').onclick = async () => {
+            await torque_off();
+            console.log('Motors disabled');
+        };
+    </script>
+</body>
+</html>
 ```
 
-## How to build in release mode
+**Note:** Must be served via HTTP (not file://) for ES modules to work. Use `python3 -m http.server 8080` or any local server.
 
-```sh
-# Builds the project and places it into the `dist` folder.
-npm run build
+## API
+
+### Connection
+- `connect()` - Connect via WebSocket (ws://localhost:8000) or WebSerial
+- `enableTorque()` - Enable all 8 motors
+- `disableTorque()` - Disable all motors (compliant mode)
+
+### Kinematics
+- `forward_kinematics(angles)` - Joint angles (deg) → [x, y, z, roll, pitch, yaw] (mm, deg)
+- `inverse_kinematics(pose)` - [x, y, z, roll, pitch, yaw] → joint angles (deg)
+- `read_pose(duration?)` - Continuously read and update pose
+
+### Recording
+- `record()` - Record movement for 10 seconds at 50Hz
+- `replay()` - Replay recorded movement
+- `stop()` - Stop recording/playback
+
+## Development
+
+```bash
+npm install          # Install dependencies
+npm start            # Dev server with hot reload
+npm run build        # Production build
+npm test             # Run tests
 ```
 
-## How to run unit tests
+## Browser Support
 
-```sh
-# Runs tests in Firefox
-npm test -- --firefox
+Chrome/Edge 89+ (WebSerial), Firefox/Safari (WebSocket only), Android Chrome (WebUSB)
 
-# Runs tests in Chrome
-npm test -- --chrome
+## Hardware
 
-# Runs tests in Safari
-npm test -- --safari
+- Reachy Mini robot head with 8× Dynamixel XL330 servos
+- USB-to-serial adapter: Arduino, FTDI, CP210x, CH340, Adafruit, or RPi Pico
+- Baud rate: 1,000,000
+
+## Examples
+
+```bash
+# Standalone HTML example (no npm install needed!)
+cd examples/basic
+python3 -m http.server 8080
+# Open http://localhost:8080/index.html
+
+# Full-featured interface
+cd examples/simple-test && npm install && npm start
+
+# Visual programming with Blockly
+cd examples/blockly && npm install && npm start
 ```
 
-## What does each file do?
+## License
 
-* `Cargo.toml` contains the standard Rust metadata. You put your Rust dependencies in here. You must change this file with your details (name, description, version, authors, categories)
-
-* `package.json` contains the standard npm metadata. You put your JavaScript dependencies in here. You must change this file with your details (author, name, version)
-
-* `webpack.config.js` contains the Webpack configuration. You shouldn't need to change this, unless you have very special needs.
-
-* The `js` folder contains your JavaScript code (`index.js` is used to hook everything into Webpack, you don't need to change it).
-
-* The `src` folder contains your Rust code.
-
-* The `static` folder contains any files that you want copied as-is into the final build. It contains an `index.html` file which loads the `index.js` file.
-
-* The `tests` folder contains your Rust unit tests.
+MIT - Xavier Tao (tao.xavier@outlook.com)

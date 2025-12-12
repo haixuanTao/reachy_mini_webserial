@@ -13,7 +13,14 @@ module.exports = {
   },
   output: {
     path: dist,
-    filename: "[name].js"
+    filename: "[name].js",
+    webassemblyModuleFilename: "reachy-mini.wasm",
+    library: {
+      name: "ReachyMini",
+      type: "umd",
+      export: "default"
+    },
+    globalObject: "this"
   },
   devServer: {
      static: dist,
@@ -28,6 +35,7 @@ module.exports = {
 
     new WasmPackPlugin({
       crateDirectory: __dirname,
+      extraArgs: "--target web",
     }),
   ]
 };
