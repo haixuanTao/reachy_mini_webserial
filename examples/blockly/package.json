@@ -8,7 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "reachy-mini": "file:../../pkg",
+    "reachy-mini": "^0.2.1",
     "web-serial-polyfill": "^1.0.15"
   },
   "devDependencies": {
